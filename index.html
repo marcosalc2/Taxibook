@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>TaxiBook Pro</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root {
+  --bg:#080c14;--s1:#0d1320;--s2:#111827;--s3:#1a2235;
+  --border:#1f2d45;--border2:#253450;
+  --acc:#00e5ff;--acc2:#0099cc;--yellow:#ffc107;--green:#00e096;--red:#ff4560;--purple:#a855f7;
+  --text:#e8f0fe;--muted:#5a7099;--muted2:#8097b8;
+  --font:'Outfit',sans-serif;--mono:'JetBrains Mono',monospace;--r:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--text);font-family:var(--font);display:flex;flex-direction:column;height:100dvh}
+.topbar{background:var(--s1);border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;z-index:50}
+.logo{display:flex;align-items:center;gap:8px}
+.logo-icon{width:32px;height:32px;background:linear-gradient(135deg,var(--acc),var(--acc2));border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px}
+.logo-name{font-size:1rem;font-weight:800;letter-spacing:-.3px}
+.logo-name span{color:var(--acc)}
+.week-badge{background:var(--s3);border:1px solid var(--border2);border-radius:20px;padding:4px 10px;font-size:.65rem;font-family:var(--mono);color:var(--muted2)}
+.nav{display:flex;background:var(--s1);border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.nav::-webkit-scrollbar{display:none}
+.nav-btn{flex:1;min-width:70px;padding:10px 6px 8px;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);font-family:var(--font);font-size:.7rem;font-weight:600;cursor:pointer;transition:all .2s;display:flex;flex-direction:column;align-items:center;gap:3px;white-space:nowrap}
+.nav-btn .ni{font-size:1.1rem}
+.nav-btn.active{color:var(--acc);border-bottom-color:var(--acc)}
+.content{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px}
+.content::-webkit-scrollbar{width:4px}
+.content::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.sec{display:none}
+.sec.active{display:block;animation:fu .2s ease}
+@keyframes fu{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.card{background:var(--s2);border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:14px}
+.ct{font-size:.65rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--acc);margin-bottom:12px}
+.sg{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.stat{background:var(--s2);border:1px solid var(--border);border-radius:var(--r);padding:14px 14px 10px;position:relative;overflow:hidden}
+.stat::before{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:var(--ac,var(--acc))}
+.sl{font-size:.62rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.sv{font-family:var(--mono);font-size:1.4rem;font-weight:500;line-height:1}
+.sv.g{color:var(--green)}.sv.r{color:var(--red)}.sv.y{color:var(--yellow)}.sv.b{color:var(--acc)}
+.ss{font-size:.62rem;color:var(--muted);margin-top:4px;font-family:var(--mono)}
+.bb{width:100%;padding:18px;border:none;border-radius:var(--r);font-family:var(--font);font-size:1rem;font-weight:700;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px}
+.bb.start{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#000;box-shadow:0 4px 20px rgba(0,229,255,.25)}
+.bb:disabled{opacity:.4;cursor:not-allowed}
+.ps{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.po{background:var(--s3);border:2px solid var(--border);border-radius:10px;padding:12px 6px;text-align:center;cursor:pointer;transition:all .2s;font-size:.75rem;font-weight:600;color:var(--muted2)}
+.po .pi{font-size:1.4rem;display:block;margin-bottom:4px}
+.po.sel{border-color:var(--acc);color:var(--acc);background:rgba(0,229,255,.08)}
+.fr{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fg{display:flex;flex-direction:column;gap:5px}
+label{font-size:.62rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--muted)}
+input,select{background:var(--s3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:.85rem;padding:10px 12px;outline:none;width:100%;transition:border-color .2s}
+input:focus,select:focus{border-color:var(--acc)}
+select option{background:var(--s2)}
+.lb{background:var(--s3);border:1px solid var(--border);border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:.72rem;color:var(--muted2)}
+.ld{width:8px;height:8px;border-radius:50%;background:var(--muted);flex-shrink:0}
+.ld.got{background:var(--green);box-shadow:0 0 6px var(--green)}
+.ld.loading{background:var(--yellow);animation:bl 1s infinite}
+@keyframes bl{0%,100%{opacity:1}50%{opacity:.3}}
+.tb{background:linear-gradient(135deg,rgba(255,69,96,.15),rgba(255,69,96,.05));border:1px solid rgba(255,69,96,.3);border-radius:var(--r);padding:12px 14px;display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.tt{font-family:var(--mono);font-size:1.1rem;font-weight:500;color:var(--red)}
+.sb{width:100%;padding:14px;background:linear-gradient(135deg,var(--green),#00b06a);border:none;border-radius:var(--r);color:#000;font-family:var(--font);font-size:.95rem;font-weight:700;cursor:pointer;transition:all .2s}
+.cd{background:rgba(255,193,7,.08);border:1px solid rgba(255,193,7,.2);border-radius:8px;padding:10px 14px;font-family:var(--mono);font-size:.8rem;color:var(--yellow);display:flex;justify-content:space-between;align-items:center}
+.dr{display:flex;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);gap:10px}
+.dr:last-child{border:none}
+.dd{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.dn{font-size:.8rem;font-weight:600;min-width:50px}
+.dbw{flex:1;height:6px;background:var(--s3);border-radius:3px;overflow:hidden}
+.db{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--acc),var(--acc2));transition:width .4s}
+.da{font-family:var(--mono);font-size:.75rem;color:var(--green);min-width:65px;text-align:right}
+.dt{font-family:var(--mono);font-size:.65rem;color:var(--muted);min-width:30px;text-align:right}
+#leafletMap{height:300px;border-radius:var(--r);border:1px solid var(--border);overflow:hidden;z-index:1;margin-bottom:8px}
+.leaflet-container{background:#e8e8e8!important}
+#mapOverlay{display:none;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:8px}
+.hg{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin-bottom:10px}
+.hc{padding:5px 2px;text-align:center;border-radius:6px;font-size:.58rem;font-family:var(--mono);cursor:pointer;transition:all .2s;border:1px solid transparent;color:var(--muted2);background:var(--s3)}
+.hc.sel{border-color:var(--acc);color:var(--acc);background:rgba(0,229,255,.1)}
+.dg{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.dp{padding:6px 12px;border-radius:20px;font-size:.72rem;font-weight:600;cursor:pointer;border:1px solid var(--border);color:var(--muted);transition:all .2s;background:var(--s3)}
+.dp.active{background:rgba(0,229,255,.12);border-color:var(--acc);color:var(--acc)}
+.rb{background:linear-gradient(135deg,rgba(0,229,255,.08),rgba(0,153,204,.05));border:1px solid rgba(0,229,255,.2);border-radius:var(--r);padding:14px;margin-top:8px}
+.rt{font-size:.65rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--acc);margin-bottom:8px}
+.rx{font-size:.82rem;line-height:1.5;color:var(--text)}
+.rz{display:inline-flex;align-items:center;gap:5px;background:rgba(0,229,255,.12);border:1px solid rgba(0,229,255,.25);border-radius:20px;padding:3px 10px;font-size:.72rem;font-family:var(--mono);color:var(--acc);margin:4px 3px}
+.ti{background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:flex-start;gap:12px}
+.tii{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0}
+.tii.cash{background:rgba(0,224,150,.12)}.tii.card{background:rgba(168,85,247,.12)}.tii.app{background:rgba(255,193,7,.12)}
+.tib{flex:1;min-width:0}
+.tip{display:flex;justify-content:space-between;align-items:flex-start}
+.tim{font-size:.7rem;color:var(--muted);font-family:var(--mono)}
+.tia{font-family:var(--mono);font-size:1rem;font-weight:500;color:var(--green)}
+.tid{font-size:.72rem;color:var(--muted2);margin-top:3px}
+.til{font-size:.65rem;color:var(--muted);font-family:var(--mono);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pb{display:inline-flex;align-items:center;gap:3px;font-size:.62rem;padding:2px 7px;border-radius:20px;font-weight:600}
+.pb.cash{background:rgba(0,224,150,.12);color:var(--green)}
+.pb.card{background:rgba(168,85,247,.12);color:var(--purple)}
+.pb.app{background:rgba(255,193,7,.12);color:var(--yellow)}
+.xb{background:none;border:none;cursor:pointer;color:var(--muted);font-size:.85rem;padding:2px;transition:color .15s;flex-shrink:0}
+.xb:hover{color:var(--red)}
+.empty{text-align:center;padding:32px 16px;color:var(--muted);font-family:var(--mono);font-size:.8rem}
+.empty .ei{font-size:2rem;display:block;margin-bottom:8px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--green);color:#000;padding:10px 20px;border-radius:20px;font-weight:700;font-size:.85rem;z-index:9999;pointer-events:none;animation:ti .3s ease;white-space:nowrap}
+@keyframes ti{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">
+    <div class="logo-icon">🚕</div>
+    <div class="logo-name">Taxi<span>Book</span> Pro</div>
+  </div>
+  <div class="week-badge" id="weekBadge"></div>
+</div>
+
+<div class="nav">
+  <button class="nav-btn active" onclick="showSec('viaje',this)"><span class="ni">🚗</span>Viaje</button>
+  <button class="nav-btn" onclick="showSec('hoy',this)"><span class="ni">📊</span>Hoy</button>
+  <button class="nav-btn" onclick="showSec('semana',this)"><span class="ni">📅</span>Semana</button>
+  <button class="nav-btn" onclick="showSec('mapa',this)"><span class="ni">🗺️</span>Mapa</button>
+  <button class="nav-btn" onclick="showSec('historial',this)"><span class="ni">📋</span>Viajes</button>
+</div>
+
+<div class="content">
+
+  <!-- VIAJE -->
+  <div class="sec active" id="sec-viaje">
+    <div class="tb" id="activeBanner" style="display:none">
+      <span style="font-size:1.3rem">🔴</span>
+      <div style="flex:1">
+        <div style="font-size:.7rem;color:var(--muted);margin-bottom:2px">VIAJE EN CURSO</div>
+        <div class="tt" id="tripTimer">00:00</div>
+      </div>
+      <div id="activeLoc" style="font-size:.62rem;color:var(--muted);font-family:var(--mono);text-align:right;max-width:140px"></div>
+    </div>
+
+    <div id="stateIdle">
+      <div class="card">
+        <div class="ct">Iniciar Viaje</div>
+        <div class="lb" style="margin-bottom:12px"><div class="ld" id="locDot"></div><span id="locText">Sin ubicacion &mdash; pulsa Iniciar</span></div>
+        <button class="bb start" id="btnStart" onclick="startTrip()">🚦 Iniciar Viaje</button>
+      </div>
+      <div class="sg" id="quickStats"></div>
+    </div>
+
+    <div id="stateActive" style="display:none">
+      <div class="card">
+        <div class="ct">Registrar Viaje</div>
+        <label style="margin-bottom:6px;display:block">Metodo de Pago</label>
+        <div class="ps" style="margin-bottom:14px">
+          <div class="po sel" data-pago="efectivo" onclick="selPago(this)"><span class="pi">💵</span>Efectivo</div>
+          <div class="po" data-pago="tarjeta" onclick="selPago(this)"><span class="pi">💳</span>Tarjeta</div>
+          <div class="po" data-pago="app" onclick="selPago(this)"><span class="pi">📱</span>App</div>
+        </div>
+        <div class="fr" style="margin-bottom:10px">
+          <div class="fg"><label>Total del viaje ($)</label><input type="number" id="inp-total" placeholder="0.00" step="0.01" min="0" oninput="calcCambio()"></div>
+          <div class="fg" id="efectivoGroup"><label>Cobrado en efectivo ($)</label><input type="number" id="inp-efectivo" placeholder="0.00" step="0.01" min="0" oninput="calcCambio()"></div>
+        </div>
+        <div class="cd" id="cambioDisplay" style="display:none;margin-bottom:10px"><span>💰 Cambio a devolver</span><span id="cambioAmt" style="font-weight:700">$0.00</span></div>
+        <div class="fg" style="margin-bottom:14px"><label>Nota (opcional)</label><input type="text" id="inp-nota" placeholder="Aeropuerto, evento..."></div>
+        <button class="sb" onclick="saveTrip()">✅ Guardar Viaje</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HOY -->
+  <div class="sec" id="sec-hoy">
+    <div class="sg" id="hoyStats"></div>
+    <div class="card" id="hoyHoras"></div>
+    <div class="card"><div class="ct">Viajes de Hoy</div><div id="hoyViajes"></div></div>
+  </div>
+
+  <!-- SEMANA -->
+  <div class="sec" id="sec-semana">
+    <div class="sg" id="semStats"></div>
+    <div class="card"><div class="ct">Ingresos por dia (Lun&ndash;Dom)</div><div id="semDays"></div></div>
+    <div class="card"><div class="ct">Desglose por metodo de pago</div><div id="semPagos"></div></div>
+  </div>
+
+  <!-- MAPA -->
+  <div class="sec" id="sec-mapa">
+    <div class="card" style="padding-bottom:10px">
+      <div class="ct">Filtrar por dia y hora</div>
+      <div class="dg" id="diaGrid"></div>
+      <div class="hg" id="horaGrid"></div>
+    </div>
+    <div id="leafletMap"></div>
+    <div id="mapOverlay"></div>
+    <div id="mapNote" style="font-size:.62rem;color:var(--muted);font-family:var(--mono);text-align:center;margin-bottom:6px"></div>
+    <div class="rb"><div class="rt">🎯 Recomendacion</div><div class="rx" id="recText">Selecciona un dia y hora para ver recomendaciones.</div></div>
+  </div>
+
+  <!-- HISTORIAL -->
+  <div class="sec" id="sec-historial">
+    <div class="sg" id="histStats"></div>
+    <div class="card" style="padding-bottom:6px">
+      <div class="ct">Filtrar</div>
+      <div style="display:flex;gap:8px">
+        <input type="date" id="filtDate" style="flex:1">
+        <select id="filtPago" style="width:120px">
+          <option value="">Todos</option>
+          <option value="efectivo">Efectivo</option>
+          <option value="tarjeta">Tarjeta</option>
+          <option value="app">App</option>
+        </select>
+      </div>
+    </div>
+    <div id="histList"></div>
+  </div>
+
+</div>
+
+<script>
+var DB = JSON.parse(localStorage.getItem('taxibookpro2') || '{"viajes":[]}');
+function save(){ localStorage.setItem('taxibookpro2', JSON.stringify(DB)); }
+
+// ── Google Sheets ──────────────────────────────────────────────
+var SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxJOTqYoDSYXR0ACjkxaEvIAVHeqFT-zxl0qk4Qvce3iOFYpUzfoeNVO7NBALOxtGvq/exec';
+
+async function syncToSheets(viaje){
+  try{
+    var row={id:viaje.id,fecha:viaje.fecha,ts:viaje.ts,pago:viaje.pago,total:viaje.total,
+             startLat:viaje.startLat||'',startLng:viaje.startLng||'',startAddr:viaje.startAddr||'',duracion:viaje.duracion||0};
+    await fetch(SHEETS_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify(row)});
+  }catch(e){ console.warn('Sheets sync error:',e); }
+}
+
+async function loadFromSheets(){
+  try{
+    var r=await fetch(SHEETS_URL+'?action=get',{mode:'cors'});
+    if(!r.ok) return;
+    var data=await r.json();
+    if(!Array.isArray(data)||!data.length) return;
+    var localIds=new Set(DB.viajes.map(function(v){ return String(v.id); }));
+    var added=0;
+    data.forEach(function(row){
+      if(!row.ID && !row.id) return;
+      var rid=String(row.ID||row.id);
+      if(localIds.has(rid)) return;
+      var hora=parseInt(row.Hora||row.hora)||0;
+      var diaSem=parseInt(row.DiaSem||row.diaSem)||0;
+      var fecha=row.Fecha||row.fecha||'';
+      var ts=row.ts||(fecha?fecha+'T'+String(hora).padStart(2,'0')+':00:00.000Z':new Date().toISOString());
+      DB.viajes.push({
+        id:parseInt(rid)||Date.now(),
+        fecha:fecha, ts:ts,
+        hora:hora, diaSem:diaSem,
+        pago:row.Pago||row.pago||'efectivo',
+        total:parseFloat(row.Total||row.total)||0,
+        efectivo:parseFloat(row.Total||row.total)||0,
+        nota:'',
+        startLat:parseFloat(row.Lat||row.startLat)||null,
+        startLng:parseFloat(row.Lng||row.startLng)||null,
+        startAddr:row.Direccion||row.startAddr||''
+      });
+      localIds.add(rid); added++;
+    });
+    if(added>0){ save(); renderQuickStats(); toast('📥 '+added+' viaje'+(added>1?'s':'')+' cargado'+(added>1?'s':'')+' de Sheets'); }
+  }catch(e){ console.warn('Sheets load error:',e); }
+}
+// ──────────────────────────────────────────────────────────────
+
+var activeTrip = null, timerInterval = null, selectedPago = 'efectivo';
+var leafletMap = null, leafletMarkers = [];
+var selectedDia = new Date().getDay(), selectedHora = null;
+
+function fmt(n){ return parseFloat(n||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtDate(d){ return new Date(d).toLocaleDateString('es-ES',{weekday:'short',day:'numeric',month:'short'}); }
+function fmtTime(d){ return new Date(d).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}); }
+function today(){ return new Date().toISOString().slice(0,10); }
+
+function getMon(date){
+  var d=new Date(date), day=d.getDay(), diff=(day===0)?-6:1-day;
+  d.setDate(d.getDate()+diff); return d.toISOString().slice(0,10);
+}
+function getWeekDays(mon){
+  var days=[];
+  for(var i=0;i<7;i++){ var d=new Date(mon); d.setDate(d.getDate()+i); days.push(d.toISOString().slice(0,10)); }
+  return days;
+}
+function weekLabel(mon){
+  var end=new Date(mon); end.setDate(end.getDate()+6);
+  return 'Sem '+new Date(mon).toLocaleDateString('es-ES',{day:'numeric',month:'short'})+' \u2013 '+end.toLocaleDateString('es-ES',{day:'numeric',month:'short'});
+}
+
+document.getElementById('weekBadge').textContent = weekLabel(getMon(today()));
+document.getElementById('filtDate').value = today();
+
+function showSec(name, btn){
+  document.querySelectorAll('.sec').forEach(function(s){ s.classList.remove('active'); });
+  document.querySelectorAll('.nav-btn').forEach(function(b){ b.classList.remove('active'); });
+  document.getElementById('sec-'+name).classList.add('active');
+  btn.classList.add('active');
+  if(name==='viaje')    renderQuickStats();
+  if(name==='hoy')      renderHoy();
+  if(name==='semana')   renderSemana();
+  if(name==='mapa')     { renderMapa(); setTimeout(function(){ if(leafletMap) leafletMap.invalidateSize(); }, 300); }
+  if(name==='historial') renderHistorial();
+}
+
+function getLocation(){
+  return new Promise(function(res,rej){
+    if(!navigator.geolocation){ rej('No disponible'); return; }
+    // Primer intento: aceptar posición de hasta 30s de antigüedad (más rápido)
+    navigator.geolocation.getCurrentPosition(
+      function(p){ res({lat:p.coords.latitude,lng:p.coords.longitude}); },
+      function(e){
+        // Si falla, segundo intento forzando posición fresca con más timeout
+        navigator.geolocation.getCurrentPosition(
+          function(p){ res({lat:p.coords.latitude,lng:p.coords.longitude}); },
+          function(e2){ rej(e2.message); },
+          {timeout:20000,maximumAge:0,enableHighAccuracy:false}
+        );
+      },
+      {timeout:8000,maximumAge:30000,enableHighAccuracy:true}
+    );
+  });
+}
+async function reverseGeocode(lat,lng){
+  try{
+    var r=await fetch('https://nominatim.openstreetmap.org/reverse?lat='+lat+'&lon='+lng+'&format=json');
+    var d=await r.json(), a=d.address;
+    return a.road||a.pedestrian||a.suburb||a.neighbourhood||'Ubicacion obtenida';
+  }catch(e){ return lat.toFixed(4)+', '+lng.toFixed(4); }
+}
+
+async function startTrip(){
+  var btn=document.getElementById('btnStart');
+  btn.disabled=true; btn.innerHTML='⏳ Obteniendo ubicacion...';
+  var dot=document.getElementById('locDot'), txt=document.getElementById('locText');
+  dot.className='ld loading'; txt.textContent='Obteniendo GPS...';
+  var lat=null, lng=null, addr='Sin GPS';
+  try{
+    var pos=await getLocation(); lat=pos.lat; lng=pos.lng;
+    dot.className='ld loading'; txt.textContent='Obteniendo direccion...';
+    addr=await reverseGeocode(lat,lng);
+    dot.className='ld got'; txt.textContent=addr;
+  }catch(e){
+    dot.className='ld';
+    txt.textContent='Sin GPS \u2014 continuando sin ubicacion';
+    console.warn('GPS error:',e);
+  }
+  activeTrip={startTime:Date.now(),startLat:lat,startLng:lng,startAddr:addr};
+  document.getElementById('stateIdle').style.display='none';
+  document.getElementById('stateActive').style.display='block';
+  document.getElementById('activeBanner').style.display='flex';
+  document.getElementById('activeLoc').textContent=(lat?addr.slice(0,30):'');
+  btn.disabled=false; btn.innerHTML='🚦 Iniciar Viaje';
+  timerInterval=setInterval(updateTimer,1000);
+}
+
+function updateTimer(){
+  if(!activeTrip) return;
+  var el=Math.floor((Date.now()-activeTrip.startTime)/1000);
+  document.getElementById('tripTimer').textContent=String(Math.floor(el/60)).padStart(2,'0')+':'+String(el%60).padStart(2,'0');
+}
+
+function selPago(el){
+  document.querySelectorAll('.po').forEach(function(o){ o.classList.remove('sel'); });
+  el.classList.add('sel'); selectedPago=el.dataset.pago;
+  document.getElementById('efectivoGroup').style.display=selectedPago==='efectivo'?'':'none';
+  calcCambio();
+}
+
+function calcCambio(){
+  if(selectedPago!=='efectivo'){ document.getElementById('cambioDisplay').style.display='none'; return; }
+  var t=parseFloat(document.getElementById('inp-total').value)||0;
+  var c=parseFloat(document.getElementById('inp-efectivo').value)||0;
+  var d=document.getElementById('cambioDisplay');
+  if(c>0&&c>t){ d.style.display='flex'; document.getElementById('cambioAmt').textContent='$'+fmt(c-t); }
+  else d.style.display='none';
+}
+
+async function saveTrip(){
+  var total=parseFloat(document.getElementById('inp-total').value);
+  if(!total||total<=0){ toast('⚠️ Introduce el importe','#ff4560'); return; }
+  var efectivo=selectedPago==='efectivo'?(parseFloat(document.getElementById('inp-efectivo').value)||total):0;
+  var now=new Date();
+  DB.viajes.push({
+    id:Date.now(), fecha:now.toISOString().slice(0,10), ts:now.toISOString(),
+    hora:now.getHours(), diaSem:now.getDay(), pago:selectedPago,
+    total:total, efectivo:efectivo, nota:document.getElementById('inp-nota').value,
+    startLat:activeTrip?activeTrip.startLat:null, startLng:activeTrip?activeTrip.startLng:null,
+    startAddr:activeTrip?activeTrip.startAddr:'',
+    duracion:activeTrip?Math.floor((Date.now()-activeTrip.startTime)/1000):0
+  });
+  save();
+  syncToSheets(DB.viajes[DB.viajes.length-1]);
+  clearInterval(timerInterval); activeTrip=null;
+  document.getElementById('stateIdle').style.display='block';
+  document.getElementById('stateActive').style.display='none';
+  document.getElementById('activeBanner').style.display='none';
+  document.getElementById('tripTimer').textContent='00:00';
+  ['inp-total','inp-efectivo','inp-nota'].forEach(function(id){ document.getElementById(id).value=''; });
+  document.getElementById('cambioDisplay').style.display='none';
+  document.querySelectorAll('.po').forEach(function(o){ o.classList.remove('sel'); });
+  document.querySelector('.po[data-pago="efectivo"]').classList.add('sel');
+  selectedPago='efectivo'; document.getElementById('efectivoGroup').style.display='';
+  document.getElementById('locDot').className='ld'; document.getElementById('locText').textContent='Sin ubicacion \u2014 pulsa Iniciar';
+  renderQuickStats(); toast('✅ Viaje guardado \u2014 $'+fmt(total));
+}
+
+function renderQuickStats(){
+  var t=today(), hoy=DB.viajes.filter(function(v){ return v.fecha===t; });
+  var th=hoy.reduce(function(s,v){ return s+v.total; },0);
+  var eh=hoy.filter(function(v){ return v.pago==='efectivo'; }).reduce(function(s,v){ return s+v.efectivo; },0);
+  var sd=getWeekDays(getMon(t)), sem=DB.viajes.filter(function(v){ return sd.indexOf(v.fecha)>=0; });
+  var ts=sem.reduce(function(s,v){ return s+v.total; },0);
+  document.getElementById('quickStats').innerHTML=
+    '<div class="stat" style="--ac:var(--green)"><div class="sl">Hoy</div><div class="sv g">$'+fmt(th)+'</div><div class="ss">'+hoy.length+' viajes</div></div>'+
+    '<div class="stat" style="--ac:var(--acc)"><div class="sl">Semana</div><div class="sv b">$'+fmt(ts)+'</div><div class="ss">'+sem.length+' viajes</div></div>'+
+    '<div class="stat" style="--ac:var(--yellow)"><div class="sl">Efectivo</div><div class="sv y">$'+fmt(eh)+'</div><div class="ss">en caja</div></div>'+
+    '<div class="stat" style="--ac:var(--purple)"><div class="sl">Prom.</div><div class="sv" style="color:var(--purple)">$'+(hoy.length?fmt(th/hoy.length):'0,00')+'</div><div class="ss">por viaje</div></div>';
+}
+
+function renderHoy(){
+  var t=today(), hoy=DB.viajes.filter(function(v){ return v.fecha===t; }).sort(function(a,b){ return b.ts.localeCompare(a.ts); });
+  var total=hoy.reduce(function(s,v){ return s+v.total; },0);
+  var ef=hoy.filter(function(v){ return v.pago==='efectivo'; }).reduce(function(s,v){ return s+v.efectivo; },0);
+  var ta=hoy.filter(function(v){ return v.pago==='tarjeta'; }).reduce(function(s,v){ return s+v.total; },0);
+  var ap=hoy.filter(function(v){ return v.pago==='app'; }).reduce(function(s,v){ return s+v.total; },0);
+  document.getElementById('hoyStats').innerHTML=
+    '<div class="stat" style="--ac:var(--green)"><div class="sl">Total hoy</div><div class="sv g">$'+fmt(total)+'</div><div class="ss">'+hoy.length+' viajes</div></div>'+
+    '<div class="stat" style="--ac:var(--yellow)"><div class="sl">Efectivo</div><div class="sv y">$'+fmt(ef)+'</div><div class="ss">en caja</div></div>'+
+    '<div class="stat" style="--ac:var(--purple)"><div class="sl">Tarjeta</div><div class="sv" style="color:var(--purple)">$'+fmt(ta)+'</div></div>'+
+    '<div class="stat" style="--ac:var(--acc)"><div class="sl">App</div><div class="sv b">$'+fmt(ap)+'</div></div>';
+  var hd=[];
+  for(var h=0;h<24;h++){ var hvs=hoy.filter(function(v){ return v.hora===h; }); if(hvs.length) hd.push({h:h,n:hvs.length,t:hvs.reduce(function(s,v){ return s+v.total; },0)}); }
+  var hCard=document.getElementById('hoyHoras');
+  if(!hd.length){ hCard.innerHTML='<div class="ct">Actividad por hora</div><div class="empty"><span class="ei">🕐</span>Sin viajes hoy</div>'; }
+  else{
+    var mh=Math.max.apply(null,hd.map(function(x){ return x.t; }));
+    hCard.innerHTML='<div class="ct">Actividad por hora &mdash; hoy</div>'+hd.map(function(x){
+      return '<div class="dr"><div class="dn" style="font-family:var(--mono);font-size:.72rem">'+(x.h<10?'0':'')+x.h+'h</div><div class="dbw"><div class="db" style="width:'+(x.t/mh*100).toFixed(0)+'%"></div></div><div class="da">$'+fmt(x.t)+'</div><div class="dt">'+x.n+'v</div></div>';
+    }).join('');
+  }
+  var ve=document.getElementById('hoyViajes');
+  if(!hoy.length){ ve.innerHTML='<div class="empty"><span class="ei">🚕</span>Sin viajes hoy</div>'; return; }
+  ve.innerHTML=hoy.map(function(v){ return tripCard(v,true); }).join('');
+}
+
+function renderSemana(){
+  var mon=getMon(today()), dias=getWeekDays(mon);
+  var NAMES=['Lun','Mar','Mie','Jue','Vie','Sab','Dom'];
+  var sv=DB.viajes.filter(function(v){ return dias.indexOf(v.fecha)>=0; });
+  var total=sv.reduce(function(s,v){ return s+v.total; },0);
+  var ef=sv.filter(function(v){ return v.pago==='efectivo'; }).reduce(function(s,v){ return s+v.efectivo; },0);
+  var worked=dias.filter(function(d){ return DB.viajes.some(function(v){ return v.fecha===d; }); }).length;
+  document.getElementById('semStats').innerHTML=
+    '<div class="stat" style="--ac:var(--green)"><div class="sl">Total semana</div><div class="sv g">$'+fmt(total)+'</div><div class="ss">'+sv.length+' viajes</div></div>'+
+    '<div class="stat" style="--ac:var(--yellow)"><div class="sl">Efectivo</div><div class="sv y">$'+fmt(ef)+'</div></div>'+
+    '<div class="stat" style="--ac:var(--acc)"><div class="sl">Media/dia</div><div class="sv b">$'+fmt(worked?total/worked:0)+'</div></div>'+
+    '<div class="stat" style="--ac:var(--purple)"><div class="sl">Mejor dia</div><div id="bdl" style="font-size:.75rem;color:var(--purple);font-family:var(--mono);margin-top:6px">-</div></div>';
+  var dt=dias.map(function(d,i){ var dv=DB.viajes.filter(function(v){ return v.fecha===d; }); return {name:NAMES[i],t:dv.reduce(function(s,v){ return s+v.total; },0),n:dv.length}; });
+  var mx=Math.max.apply(null,dt.map(function(d){ return d.t; }).concat([1]));
+  var best=dt.reduce(function(a,b){ return a.t>b.t?a:b; },dt[0]);
+  var bdl=document.getElementById('bdl'); if(bdl&&best.t>0) bdl.textContent=best.name+' $'+fmt(best.t);
+  var cols=['#00e5ff','#00b4cc','#00e096','#ffc107','#ff4560','#a855f7','#60a5fa'];
+  document.getElementById('semDays').innerHTML=dt.map(function(d,i){
+    return '<div class="dr"><div class="dd" style="background:'+cols[i]+'"></div><div class="dn">'+d.name+'</div><div class="dbw"><div class="db" style="width:'+(d.t/mx*100).toFixed(0)+'%;background:'+cols[i]+'"></div></div><div class="da">$'+fmt(d.t)+'</div><div class="dt">'+d.n+'v</div></div>';
+  }).join('');
+  var pagos=[{k:'efectivo',l:'💵 Efectivo',c:'var(--green)'},{k:'tarjeta',l:'💳 Tarjeta',c:'var(--purple)'},{k:'app',l:'📱 App',c:'var(--yellow)'}];
+  var mxp=Math.max.apply(null,pagos.map(function(p){ return sv.filter(function(v){ return v.pago===p.k; }).reduce(function(s,v){ return s+v.total; },0); }).concat([1]));
+  document.getElementById('semPagos').innerHTML=pagos.map(function(p){
+    var pt=sv.filter(function(v){ return v.pago===p.k; }).reduce(function(s,v){ return s+v.total; },0);
+    var pn=sv.filter(function(v){ return v.pago===p.k; }).length;
+    return '<div class="dr"><div class="dn" style="font-size:.72rem;min-width:80px">'+p.l+'</div><div class="dbw"><div class="db" style="width:'+(pt/mxp*100).toFixed(0)+'%;background:'+p.c+'"></div></div><div class="da" style="color:'+p.c+'">$'+fmt(pt)+'</div><div class="dt">'+pn+'v</div></div>';
+  }).join('');
+}
+
+var DIAS=['Domingo','Lunes','Martes','Miercoles','Jueves','Viernes','Sabado'];
+var HORAS=['00','01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23'];
+
+function renderMapa(){
+  document.getElementById('diaGrid').innerHTML=DIAS.map(function(d,i){
+    return '<div class="dp'+(i===selectedDia?' active':'')+'" onclick="selectDia('+i+')">'+d.slice(0,3)+'</div>';
+  }).join('');
+  document.getElementById('horaGrid').innerHTML=HORAS.map(function(h){
+    return '<div class="hc'+(h===selectedHora?' sel':'')+'" onclick="selectHora(\''+h+'\')">'+h+'h</div>';
+  }).join('');
+  updateHeatmap();
+}
+function selectDia(i){ selectedDia=i; renderMapa(); }
+function selectHora(h){ selectedHora=selectedHora===h?null:h; renderMapa(); }
+
+function updateHeatmap(){
+  var viajes=DB.viajes.filter(function(v){ return v.diaSem===selectedDia; });
+  if(selectedHora!==null){ var h=parseInt(selectedHora); viajes=viajes.filter(function(v){ return v.hora===h; }); }
+  var gps=viajes.filter(function(v){ return v.startLat; });
+  renderLeaflet(gps, viajes);
+  genRec(viajes);
+}
+
+function renderLeaflet(gps, all){
+  var mel=document.getElementById('leafletMap'), ov=document.getElementById('mapOverlay'), note=document.getElementById('mapNote');
+  if(!all.length){
+    mel.style.display='none'; ov.style.display='block';
+    ov.innerHTML='<div class="empty"><span class="ei">🗺️</span>Sin viajes para este filtro</div>';
+    note.textContent=''; return;
+  }
+  if(!gps.length){
+    mel.style.display='none'; ov.style.display='block';
+    var total=all.reduce(function(s,v){ return s+v.total; },0);
+    var bh={};
+    all.forEach(function(v){ if(!bh[v.hora]) bh[v.hora]={n:0,t:0}; bh[v.hora].n++; bh[v.hora].t+=v.total; });
+    var hrs=Object.entries(bh).sort(function(a,b){ return +a[0]-+b[0]; });
+    var mx=Math.max.apply(null,hrs.map(function(e){ return e[1].t; }).concat([1]));
+    var html='<div style="font-size:.62rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#00e5ff;margin-bottom:10px">';
+    html+=DIAS[selectedDia]+(selectedHora?' &middot; '+selectedHora+'h':'')+' &mdash; '+all.length+' viaje'+(all.length>1?'s':'')+' &middot; <span style="color:#00e096">$'+total.toFixed(2).replace('.',',')+'</span></div>';
+    hrs.forEach(function(e){
+      var h=e[0],d=e[1],pct=Math.round(d.t/mx*100);
+      var lbl=d.t>mx*0.3?'<span style="font-size:.6rem;font-family:var(--mono);color:#000;font-weight:600">$'+d.t.toFixed(2).replace('.',',')+'</span>':'';
+      html+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px">';
+      html+='<div style="font-family:var(--mono);font-size:.65rem;color:#5a7099;width:28px">'+(h<10?'0':'')+h+'h</div>';
+      html+='<div style="flex:1;height:20px;background:#111827;border-radius:4px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#00e5ff,#00b4cc);border-radius:4px;display:flex;align-items:center;padding-left:6px">'+lbl+'</div></div>';
+      html+='<div style="font-family:var(--mono);font-size:.65rem;color:#00e096;width:52px;text-align:right">$'+d.t.toFixed(2).replace('.',',')+'</div>';
+      html+='<div style="font-family:var(--mono);font-size:.6rem;color:#5a7099;width:20px;text-align:right">'+d.n+'v</div></div>';
+    });
+    html+='<div style="margin-top:10px;padding-top:8px;border-top:1px solid #1f2d45;font-size:.62rem;color:#5a7099;font-family:var(--mono)">Activa el GPS al iniciar viaje para ver el mapa</div>';
+    ov.innerHTML=html; note.textContent=''; return;
+  }
+  // Leaflet map
+  ov.style.display='none'; mel.style.display='block';
+  if(!leafletMap){
+    leafletMap=L.map('leafletMap',{zoomControl:true});
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{attribution:'&copy; OpenStreetMap &copy; CARTO',maxZoom:19}).addTo(leafletMap);
+  }
+  leafletMarkers.forEach(function(m){ leafletMap.removeLayer(m); });
+  leafletMarkers=[];
+  var mx=Math.max.apply(null,gps.map(function(v){ return v.total; }));
+  gps.forEach(function(v){
+    var col=v.total>mx*0.7?'#00e096':v.total>mx*0.4?'#ffc107':'#00e5ff';
+    var m=L.circleMarker([v.startLat,v.startLng],{radius:7+(v.total/mx)*10,fillColor:col,color:col,weight:1.5,opacity:.9,fillOpacity:.5})
+      .bindPopup('<b style="font-family:monospace">$'+fmt(v.total)+'</b><br>'+fmtTime(v.ts)+'<br><small>'+(v.startAddr||'')+'</small>');
+    m.addTo(leafletMap); leafletMarkers.push(m);
+  });
+  var lats=gps.map(function(v){ return v.startLat; }), lngs=gps.map(function(v){ return v.startLng; });
+  if(gps.length===1){ leafletMap.setView([lats[0],lngs[0]],15); }
+  else{ leafletMap.fitBounds([[Math.min.apply(null,lats),Math.min.apply(null,lngs)],[Math.max.apply(null,lats),Math.max.apply(null,lngs)]],{padding:[30,30]}); }
+  setTimeout(function(){ leafletMap.invalidateSize(); },150);
+  note.textContent=gps.length+' punto'+(gps.length>1?'s':'')+' \u2022 verde=alto \u2022 amarillo=medio \u2022 azul=bajo';
+}
+
+function genRec(viajes){
+  var el=document.getElementById('recText');
+  if(!viajes.length){ el.innerHTML='No hay datos para '+DIAS[selectedDia]+(selectedHora?' a las '+selectedHora+'h':'')+'.'; return; }
+  var total=viajes.reduce(function(s,v){ return s+v.total; },0);
+  var hm={};
+  viajes.forEach(function(v){ hm[v.hora]=(hm[v.hora]||0)+v.total; });
+  var bh=Object.entries(hm).sort(function(a,b){ return b[1]-a[1]; })[0];
+  var html='<strong>'+DIAS[selectedDia]+(selectedHora?' a las '+selectedHora+'h':'')+'</strong>: '+viajes.length+' viaje'+(viajes.length>1?'s':'')+', media <strong>$'+fmt(total/viajes.length)+'</strong>/viaje.<br>';
+  if(bh&&!selectedHora) html+='<br>Mejor franja: <strong>'+(bh[0]<10?'0':'')+bh[0]+':00h</strong><br>';
+  var gps=viajes.filter(function(v){ return v.startLat; });
+  if(gps.length){
+    var zones={};
+    gps.forEach(function(v){
+      var k=Math.round(v.startLat*100)/100+','+Math.round(v.startLng*100)/100;
+      if(!zones[k]) zones[k]={addrs:[],t:0,n:0};
+      zones[k].t+=v.total; zones[k].n++; if(v.startAddr) zones[k].addrs.push(v.startAddr);
+    });
+    html+='<br>Zonas con mas ingresos:<br>';
+    Object.values(zones).sort(function(a,b){ return b.t-a.t; }).slice(0,3).forEach(function(z,i){
+      html+='<span class="rz">'+['🥇','🥈','🥉'][i]+' '+(z.addrs[0]||'Zona '+(i+1)).slice(0,28)+' &middot; $'+fmt(z.t/z.n)+'/v</span>';
+    });
+  } else { html+='<br>Activa el GPS para ver recomendaciones de zonas.'; }
+  el.innerHTML=html;
+}
+
+function renderHistorial(){
+  var date=document.getElementById('filtDate').value, pago=document.getElementById('filtPago').value;
+  var vs=DB.viajes.filter(function(v){ return !date||v.fecha===date; });
+  if(pago) vs=vs.filter(function(v){ return v.pago===pago; });
+  vs=vs.sort(function(a,b){ return b.ts.localeCompare(a.ts); });
+  var total=vs.reduce(function(s,v){ return s+v.total; },0);
+  var ef=vs.filter(function(v){ return v.pago==='efectivo'; }).reduce(function(s,v){ return s+v.efectivo; },0);
+  document.getElementById('histStats').innerHTML=
+    '<div class="stat" style="--ac:var(--green)"><div class="sl">Total</div><div class="sv g">$'+fmt(total)+'</div><div class="ss">'+vs.length+' viajes</div></div>'+
+    '<div class="stat" style="--ac:var(--yellow)"><div class="sl">Efectivo</div><div class="sv y">$'+fmt(ef)+'</div></div>';
+  var el=document.getElementById('histList');
+  if(!vs.length){ el.innerHTML='<div class="empty"><span class="ei">🚕</span>Sin viajes</div>'; return; }
+  el.innerHTML=vs.map(function(v){ return tripCard(v,true); }).join('');
+}
+
+function tripCard(v, del){
+  var ic={efectivo:'💵',tarjeta:'💳',app:'📱'}, cl={efectivo:'cash',tarjeta:'card',app:'app'};
+  var dur=v.duracion?Math.floor(v.duracion/60)+'min':'';
+  return '<div class="ti" id="ti'+v.id+'">'+
+    '<div class="tii '+cl[v.pago]+'">'+ic[v.pago]+'</div>'+
+    '<div class="tib">'+
+      '<div class="tip">'+
+        '<div><span class="pb '+cl[v.pago]+'">'+ic[v.pago]+' '+v.pago+'</span>'+(dur?'<span style="font-size:.6rem;color:var(--muted);font-family:var(--mono);margin-left:4px">'+dur+'</span>':'')+'</div>'+
+        '<div class="tia">$'+fmt(v.total)+'</div>'+
+      '</div>'+
+      '<div class="tim">'+fmtDate(v.fecha)+' &middot; '+fmtTime(v.ts)+'</div>'+
+      (v.pago==='efectivo'&&v.efectivo!==v.total?'<div class="tid">Cobrado: $'+fmt(v.efectivo)+' &middot; Cambio: $'+fmt(v.efectivo-v.total)+'</div>':'')+
+      (v.startAddr&&v.startAddr!=='Sin GPS'?'<div class="til">📍 '+v.startAddr+'</div>':'')+
+      (v.nota?'<div class="tid">💬 '+v.nota+'</div>':'')+
+    '</div>'+
+    (del?'<button class="xb" onclick="delViaje('+v.id+')">🗑</button>':'')+
+  '</div>';
+}
+
+function delViaje(id){
+  if(!confirm('Eliminar este viaje?')) return;
+  DB.viajes=DB.viajes.filter(function(v){ return v.id!==id; });
+  save(); var el=document.getElementById('ti'+id); if(el) el.remove(); renderQuickStats();
+}
+
+function toast(msg,bg){
+  bg=bg||'#00e096';
+  var t=document.createElement('div'); t.className='toast';
+  t.style.background=bg; t.style.color=bg==='#00e096'?'#000':'#fff'; t.textContent=msg;
+  document.body.appendChild(t); setTimeout(function(){ t.remove(); },2500);
+}
+
+renderQuickStats();
+setTimeout(loadFromSheets, 1200);
+</script>
+</body>
+</html>
