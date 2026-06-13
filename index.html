@@ -183,10 +183,19 @@ select option{background:var(--s2)}
     <div class="tb" id="activeBanner" style="display:none">
       <span style="font-size:1.3rem">🔴</span>
       <div style="flex:1">
-        <div style="font-size:.7rem;color:var(--muted);margin-bottom:2px">VIAJE EN CURSO</div>
-        <div class="tt" id="tripTimer">00:00</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-bottom:4px">VIAJE EN CURSO</div>
+        <div style="display:flex;gap:18px;align-items:baseline">
+          <div>
+            <div style="font-size:.55rem;color:var(--muted);letter-spacing:.8px;text-transform:uppercase;margin-bottom:1px">Tiempo</div>
+            <div class="tt" id="tripTimer">00:00</div>
+          </div>
+          <div>
+            <div style="font-size:.55rem;color:var(--muted);letter-spacing:.8px;text-transform:uppercase;margin-bottom:1px">Distancia</div>
+            <div class="tt" id="tripDist" style="color:var(--acc)">0,0 km</div>
+          </div>
+        </div>
+        <div id="activeLoc" style="font-size:.6rem;color:var(--muted);font-family:var(--mono);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px"></div>
       </div>
-      <div id="activeLoc" style="font-size:.62rem;color:var(--muted);font-family:var(--mono);text-align:right;max-width:140px"></div>
     </div>
 
     <div id="stateIdle">
@@ -491,9 +500,20 @@ async function loadFromSheets(){
 // ══════════════════════════════════════════════
 // ESTADO GLOBAL
 // ══════════════════════════════════════════════
-var activeTrip = null, timerInterval = null, selectedPago = 'efectivo', selectedPlat = 'Cabify';
+var activeTrip = null, timerInterval = null, watchId = null, selectedPago = 'efectivo', selectedPlat = 'Cabify';
 var leafletMap = null, leafletMarkers = [];
 var selectedDia = new Date().getDay(), selectedHora = null;
+
+// Distancia entre dos coordenadas (fórmula Haversine) en km
+function haversine(lat1, lng1, lat2, lng2){
+  var R = 6371;
+  var dLat = (lat2-lat1) * Math.PI/180;
+  var dLng = (lng2-lng1) * Math.PI/180;
+  var a = Math.sin(dLat/2)*Math.sin(dLat/2) +
+          Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*
+          Math.sin(dLng/2)*Math.sin(dLng/2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
 
 // ══════════════════════════════════════════════
 // UTILIDADES
@@ -582,13 +602,36 @@ async function startTrip(){
     dot.className = 'ld';
     txt.textContent = 'Sin GPS — continuando sin ubicación';
   }
-  activeTrip = {startTime:Date.now(), startLat:lat, startLng:lng, startAddr:addr};
+  activeTrip = {startTime:Date.now(), startLat:lat, startLng:lng, startAddr:addr, distKm:0, lastLat:lat, lastLng:lng};
   document.getElementById('stateIdle').style.display = 'none';
   document.getElementById('stateActive').style.display = 'block';
   document.getElementById('activeBanner').style.display = 'flex';
-  document.getElementById('activeLoc').textContent = (lat ? addr.slice(0,30) : '');
+  document.getElementById('activeLoc').textContent = (lat ? addr.slice(0,40) : 'Sin GPS');
+  document.getElementById('tripDist').textContent = '0,0 km';
   btn.disabled = false; btn.innerHTML = '🚦 Iniciar Viaje';
   timerInterval = setInterval(updateTimer, 1000);
+  // Seguimiento de posición para calcular distancia en tiempo real
+  if(navigator.geolocation && lat !== null){
+    watchId = navigator.geolocation.watchPosition(
+      function(p){
+        if(!activeTrip) return;
+        var newLat = p.coords.latitude, newLng = p.coords.longitude;
+        // Ignorar saltos con precisión muy mala (>80m) para evitar ruido GPS
+        if(p.coords.accuracy > 80) return;
+        if(activeTrip.lastLat !== null){
+          var d = haversine(activeTrip.lastLat, activeTrip.lastLng, newLat, newLng);
+          // Filtro: ignorar saltos >0.3 km entre muestras (GPS rogue)
+          if(d < 0.3) activeTrip.distKm += d;
+        }
+        activeTrip.lastLat = newLat; activeTrip.lastLng = newLng;
+        var km = activeTrip.distKm;
+        document.getElementById('tripDist').textContent =
+          km < 1 ? Math.round(km*1000) + ' m' : km.toFixed(1).replace('.', ',') + ' km';
+      },
+      function(){ /* silencioso si falla watchPosition */ },
+      {enableHighAccuracy:true, maximumAge:3000, timeout:15000}
+    );
+  }
 }
 
 function updateTimer(){
@@ -643,7 +686,8 @@ async function saveTrip(){
     startLat: activeTrip ? activeTrip.startLat : null,
     startLng: activeTrip ? activeTrip.startLng : null,
     startAddr: activeTrip ? activeTrip.startAddr : '',
-    duracion: activeTrip ? Math.floor((Date.now() - activeTrip.startTime) / 1000) : 0
+    duracion: activeTrip ? Math.floor((Date.now() - activeTrip.startTime) / 1000) : 0,
+    distKm: activeTrip ? parseFloat((activeTrip.distKm||0).toFixed(2)) : 0
   };
 
   DB.viajes.push(viaje);
@@ -668,7 +712,10 @@ function cancelTrip(){
 }
 
 function resetTripState(){
-  clearInterval(timerInterval); activeTrip = null;
+  clearInterval(timerInterval);
+  if(watchId !== null){ navigator.geolocation.clearWatch(watchId); watchId = null; }
+  activeTrip = null;
+  document.getElementById('tripDist').textContent = '0,0 km';
   document.getElementById('stateIdle').style.display = 'block';
   document.getElementById('stateActive').style.display = 'none';
   document.getElementById('activeBanner').style.display = 'none';
@@ -915,12 +962,13 @@ document.getElementById('filtPlat').addEventListener('change', renderHistorial);
 function tripCard(v, del){
   var ic = {efectivo:'💵', tarjeta:'💳', app:'📱'}, cl = {efectivo:'cash', tarjeta:'card', app:'app'};
   var dur = v.duracion ? Math.floor(v.duracion/60) + 'min' : '';
+  var dist = v.distKm > 0 ? (v.distKm < 1 ? Math.round(v.distKm*1000)+'m' : v.distKm.toFixed(1).replace('.',',')+' km') : '';
   var plat = v.plataforma ? '<span style="font-size:.6rem;color:var(--yellow);font-family:var(--mono);margin-left:4px">'+v.plataforma+'</span>' : '';
   return '<div class="ti" id="ti'+v.id+'">'+
     '<div class="tii '+cl[v.pago]+'">'+ic[v.pago]+'</div>'+
     '<div class="tib">'+
       '<div class="tip">'+
-        '<div><span class="pb '+cl[v.pago]+'">'+ic[v.pago]+' '+v.pago+'</span>'+plat+(dur?'<span style="font-size:.6rem;color:var(--muted);font-family:var(--mono);margin-left:4px">'+dur+'</span>':'')+'</div>'+
+        '<div><span class="pb '+cl[v.pago]+'">'+ic[v.pago]+' '+v.pago+'</span>'+plat+(dur?'<span style="font-size:.6rem;color:var(--muted);font-family:var(--mono);margin-left:4px">⏱'+dur+'</span>':'')+(dist?'<span style="font-size:.6rem;color:var(--acc);font-family:var(--mono);margin-left:4px">📍'+dist+'</span>':'')+'</div>'+
         '<div class="tia">€'+fmt(v.total)+'</div>'+
       '</div>'+
       '<div class="tim">'+fmtDate(v.fecha)+' · '+fmtTime(v.ts)+'</div>'+
