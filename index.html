@@ -345,15 +345,11 @@ select option{background:var(--s2)}
     </div>
 
     <div class="card">
-      <div class="ct">Sincronización Google Sheets</div>
-      <div class="setting-row">
-        <div>
-          <div class="setting-label">URL del Script</div>
-          <div class="setting-desc">Apps Script Web App URL</div>
-        </div>
-      </div>
-      <input type="url" id="sheetsUrlInput" placeholder="https://script.google.com/macros/s/..." style="margin-bottom:10px;font-size:.7rem">
-      <button class="exp-btn" style="width:100%;padding:10px" onclick="saveSheetsUrl()">💾 Guardar URL</button>
+      <div class="ct">Google Sheets</div>
+      <div style="font-size:.72rem;color:var(--green);font-family:var(--mono);margin-bottom:6px" id="sheetsStatus">⏳ Conectando...</div>
+      <div style="font-size:.65rem;color:var(--muted);margin-bottom:8px">Registros: <span id="sheetsCount">-</span></div>
+      <div id="sheetsDebug" style="font-size:.58rem;color:var(--yellow);font-family:var(--mono);background:var(--s3);border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:8px;word-break:break-all;line-height:1.5">Pulsa Sincronizar para diagnóstico</div>
+      <button class="exp-btn" style="width:100%;padding:10px" onclick="loadFromSheets(true)">🔄 Sincronizar ahora</button>
     </div>
 
     <div class="card">
@@ -368,7 +364,7 @@ select option{background:var(--s2)}
 // ══════════════════════════════════════════════
 // STORAGE — robusto, con manejo de errores
 // ══════════════════════════════════════════════
-var STORAGE_KEY = 'taxibookpro3';
+var STORAGE_KEY = 'taxibookpro2';
 var SHEETS_URL_KEY = 'taxibook_sheets_url';
 
 function loadDB(){
@@ -518,67 +514,126 @@ async function syncToSheets(viaje){
 
 async function loadFromSheets(manual){
   var statusEl = document.getElementById('sheetsStatus');
-  if(statusEl) statusEl.textContent = '🔄 Sincronizando...';
+  var sc       = document.getElementById('sheetsCount');
+  var dbgEl    = document.getElementById('sheetsDebug');
+  if(statusEl) statusEl.textContent = '🔄 Conectando...';
+
+  // ── Intentar GET con CORS normal ──────────────────────────────
+  var data = null;
+  var err  = null;
   try{
-    var r = await fetch(SHEETS_URL + '?action=get', {mode:'cors', cache:'no-store'});
-    if(!r.ok) throw new Error('HTTP ' + r.status);
-    var data = await r.json();
-    if(!Array.isArray(data) || !data.length){
-      if(statusEl) statusEl.textContent = '🔗 Conectado — sin datos nuevos';
-      var sc = document.getElementById('sheetsCount');
-      if(sc) sc.textContent = '0';
+    var r = await fetch(SHEETS_URL + '?action=get', {
+      method: 'GET',
+      mode: 'cors',
+      cache: 'no-store',
+      redirect: 'follow'
+    });
+    var text = await r.text();
+    if(dbgEl) dbgEl.textContent = 'HTTP ' + r.status + ' · ' + text.slice(0,200);
+    data = JSON.parse(text);
+  } catch(e){
+    err = e.message;
+    if(dbgEl) dbgEl.textContent = 'Error fetch: ' + e.message;
+  }
+
+  // ── Si falló, intentar JSONP ───────────────────────────────────
+  if(!data){
+    try{
+      data = await new Promise(function(res, rej){
+        var cb = 'tb_cb_' + Date.now();
+        var s  = document.createElement('script');
+        var t  = setTimeout(function(){ rej(new Error('JSONP timeout')); s.remove(); }, 10000);
+        window[cb] = function(d){ clearTimeout(t); delete window[cb]; s.remove(); res(d); };
+        s.src = SHEETS_URL + '?action=get&callback=' + cb;
+        document.head.appendChild(s);
+      });
+      if(dbgEl) dbgEl.textContent = 'JSONP OK · ' + JSON.stringify(data).slice(0,200);
+    } catch(e2){
+      if(dbgEl) dbgEl.textContent = (err||'') + ' | JSONP: ' + e2.message;
+      if(statusEl) statusEl.textContent = '❌ Sin conexión con Sheets';
+      if(manual) toast('❌ No se pudo conectar con Sheets', '#ff4560');
       return;
     }
-    var localIds = new Set(DB.viajes.map(function(v){ return String(v.id); }));
-    var added = 0;
-    data.forEach(function(row){
-      // Aceptar cualquier capitalización de ID
-      var rid = String(row.ID || row.id || row.Id || '');
-      if(!rid || localIds.has(rid)) return;
-      // Campos con fallback a nombres del script viejo (Lat/Lng/Direccion/Hora/DiaSem/Fecha/Pago/Total)
-      var hora   = parseInt(row.Hora    || row.hora   || 0);
-      var diaSem = parseInt(row.DiaSem  || row.diaSem || 0);
-      var fecha  = row.Fecha   || row.fecha  || '';
-      var ts     = row.ts || (fecha ? fecha + 'T' + String(hora).padStart(2,'0') + ':00:00.000Z' : new Date().toISOString());
-      var total  = parseFloat(row.Total    || row.total   || 0);
-      DB.viajes.push({
-        id:         parseInt(rid) || Date.now(),
-        fecha:      fecha,
-        ts:         ts,
-        hora:       hora,
-        diaSem:     diaSem,
-        pago:       (row.Pago       || row.pago       || 'efectivo').toLowerCase(),
-        plataforma: row.Plataforma  || row.plataforma  || '',
-        total:      total,
-        efectivo:   parseFloat(row.Efectivo || row.efectivo) || total,
-        duracion:   parseInt(row.Duracion   || row.duracion) || 0,
-        distKm:     parseFloat(row.DistKm   || row.distKm)   || 0,
-        // Origen — compatible con Lat/Lng/Direccion del script viejo
-        startLat:   parseFloat(row.StartLat  || row.startLat  || row.Lat  || row.lat)  || null,
-        startLng:   parseFloat(row.StartLng  || row.startLng  || row.Lng  || row.lng)  || null,
-        startAddr:  row.StartAddr || row.startAddr || row.Direccion || row.direccion || '',
-        // Destino
-        endLat:     parseFloat(row.EndLat   || row.endLat)   || null,
-        endLng:     parseFloat(row.EndLng   || row.endLng)   || null,
-        endAddr:    row.EndAddr   || row.endAddr   || '',
-        ruta:       row.Ruta      || row.ruta      || '',
-        nota:       row.Nota      || row.nota      || ''
-      });
-      localIds.add(rid); added++;
-    });
-    var sc = document.getElementById('sheetsCount');
-    if(sc) sc.textContent = data.length;
-    if(statusEl) statusEl.textContent = '🔗 Conectado — ' + data.length + ' registros';
-    if(added > 0){
-      save(); renderQuickStats();
-      toast('📥 ' + added + ' viaje' + (added>1?'s':'') + ' importado' + (added>1?'s':'') + ' de Sheets');
-    } else if(manual){
-      toast('✅ Ya sincronizado — sin viajes nuevos');
+  }
+
+  if(!Array.isArray(data) || !data.length){
+    if(statusEl) statusEl.textContent = '🔗 Conectado — hoja vacía o sin datos';
+    if(sc) sc.textContent = '0';
+    if(dbgEl && !dbgEl.textContent) dbgEl.textContent = 'Respuesta: ' + JSON.stringify(data).slice(0,200);
+    if(manual) toast('ℹ️ Sheets conectado pero sin filas', '#ffc107');
+    return;
+  }
+
+  // Mostrar claves de la primera fila para diagnóstico
+  if(dbgEl) dbgEl.textContent = 'Columnas detectadas: ' + Object.keys(data[0]).join(', ') + ' · ' + data.length + ' filas';
+
+  var localIds = new Set(DB.viajes.map(function(v){ return String(v.id); }));
+  var added = 0;
+
+  data.forEach(function(row){
+    // Buscar ID en cualquier columna posible
+    var rid = String(
+      row.ID || row.id || row.Id ||
+      row.Timestamp || row.timestamp ||
+      ''
+    );
+    // Si no hay ID numérico propio, generar uno desde fecha+total para evitar duplicados
+    if(!rid){
+      var f = row.Fecha || row.fecha || '';
+      var to = row.Total || row.total || '0';
+      rid = f + '_' + to;
     }
-  } catch(e){
-    console.warn('Sheets GET error:', e);
-    if(statusEl) statusEl.textContent = '❌ Error de conexión';
-    if(manual) toast('❌ No se pudo conectar con Sheets', '#ff4560');
+    if(localIds.has(rid)) return;
+
+    var hora   = parseInt(row.Hora   || row.hora   || 0);
+    var diaSem = parseInt(row.DiaSem || row.diaSem || 0);
+    var fecha  = row.Fecha  || row.fecha  || '';
+    var total  = parseFloat(row.Total  || row.total  || 0);
+    var ts     = row.Timestamp || row.ts ||
+                 (fecha ? fecha + 'T' + String(hora).padStart(2,'0') + ':00:00.000Z'
+                        : new Date().toISOString());
+
+    // Calcular diaSem desde fecha si no viene
+    if(!diaSem && fecha){
+      try{ diaSem = new Date(fecha).getDay(); } catch(e){}
+    }
+    // Calcular hora desde ts si no viene
+    if(!hora && ts){
+      try{ hora = new Date(ts).getHours(); } catch(e){}
+    }
+
+    DB.viajes.push({
+      id:         rid,
+      fecha:      fecha,
+      ts:         ts,
+      hora:       hora,
+      diaSem:     diaSem,
+      pago:       (row.Pago        || row.pago        || 'efectivo').toLowerCase(),
+      plataforma: row.Plataforma   || row.plataforma   || '',
+      total:      total,
+      efectivo:   parseFloat(row.Efectivo  || row.efectivo)  || total,
+      duracion:   parseInt(row.Duracion    || row.duracion)   || 0,
+      distKm:     parseFloat(row.DistKm   || row.distKm || row.Distancia || 0) || 0,
+      startLat:   parseFloat(row.StartLat || row.startLat || row.Lat || row.lat) || null,
+      startLng:   parseFloat(row.StartLng || row.startLng || row.Lng || row.lng) || null,
+      startAddr:  row.StartAddr   || row.startAddr   || row.Direccion || row.direccion || row.Origen || '',
+      endLat:     parseFloat(row.EndLat   || row.endLat)    || null,
+      endLng:     parseFloat(row.EndLng   || row.endLng)    || null,
+      endAddr:    row.EndAddr     || row.endAddr     || row.Destino  || '',
+      ruta:       row.Ruta        || row.ruta        || '',
+      nota:       row.Nota        || row.nota        || ''
+    });
+    localIds.add(rid); added++;
+  });
+
+  if(sc) sc.textContent = data.length;
+  if(statusEl) statusEl.textContent = '🔗 ' + data.length + ' registros · +' + added + ' nuevos';
+
+  if(added > 0){
+    save(); renderQuickStats();
+    toast('📥 ' + added + ' viaje' + (added>1?'s':'') + ' importado' + (added>1?'s':'') + ' de Sheets');
+  } else if(manual){
+    toast('✅ Ya sincronizado — sin viajes nuevos');
   }
 }
 
@@ -824,7 +879,7 @@ async function saveTrip(){
 }
 
 // ══════════════════════════════════════════════
-// RECOMENDACIÓN IA — llama a Claude con historial
+// RECOMENDACIÓN IA — ordenada por distancia
 // ══════════════════════════════════════════════
 async function pedirRecomendacion(viajeRecien){
   var panel   = document.getElementById('recPanel');
@@ -834,78 +889,140 @@ async function pedirRecomendacion(viajeRecien){
   content.innerHTML =
     '<div style="display:flex;align-items:center;gap:8px;color:var(--muted);font-family:var(--mono);font-size:.75rem">' +
     '<div style="width:8px;height:8px;border-radius:50%;background:var(--purple);animation:bl 1s infinite"></div>' +
-    'Analizando historial...</div>';
+    'Obteniendo posición y analizando historial...</div>';
 
   var ahora  = new Date();
   var hora   = ahora.getHours();
   var dias   = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
   var diaNom = dias[ahora.getDay()];
-
   meta.textContent = diaNom + ' ' + String(hora).padStart(2,'0') + ':00 · ' + DB.viajes.length + ' viajes en historial';
 
-  // Construir resumen del historial: últimas semanas, mismo día/hora ±2h
+  // ── 1. Obtener posición actual ────────────────
+  var miLat = viajeRecien.endLat   || viajeRecien.startLat   || null;
+  var miLng = viajeRecien.endLng   || viajeRecien.startLng   || null;
+  try{
+    var pos = await getLocation();
+    miLat = pos.lat; miLng = pos.lng;
+  } catch(e){ /* usar coordenadas del último viaje */ }
+
+  // ── 2. Mismo bloque horario (día ±2h) ─────────
   var mismoBloque = DB.viajes.filter(function(v){
     return v.diaSem === ahora.getDay() && Math.abs(v.hora - hora) <= 2;
   });
 
-  // Top zonas de salida por ingresos
+  // ── 3. Agrupar por zona de INICIO del viaje ──
+  //    (donde recogiste al cliente = donde hay demanda)
   var zonas = {};
   mismoBloque.forEach(function(v){
-    var z = v.endAddr || v.startAddr || '';
-    if(!z) return;
-    // Simplificar a nombre de calle principal
-    var k = z.split(',')[0].trim();
-    if(!zonas[k]) zonas[k] = {n:0, t:0, ejemplos:[]};
+    // Usar la dirección y coordenadas de INICIO (donde arrancó el viaje)
+    var addr = v.startAddr || v.endAddr || '';
+    if(!addr && !v.startLat) return;
+    var k = addr.split(',')[0].trim() || ('Zona ' + Object.keys(zonas).length);
+    if(!zonas[k]){
+      zonas[k] = {
+        n: 0, t: 0,
+        lat: v.startLat || null,
+        lng: v.startLng || null,
+        addr: addr
+      };
+    }
     zonas[k].n++;
     zonas[k].t += v.total;
-    if(zonas[k].ejemplos.length < 2) zonas[k].ejemplos.push(z);
+    // Actualizar coords con la más reciente si no las tenía
+    if(!zonas[k].lat && v.startLat){ zonas[k].lat = v.startLat; zonas[k].lng = v.startLng; }
   });
-  var topZonas = Object.entries(zonas)
-    .sort(function(a,b){ return b[1].t - a[1].t; })
-    .slice(0,6)
-    .map(function(e){ return e[0] + ' (' + e[1].n + ' viajes, €' + (e[1].t/e[1].n).toFixed(2) + '/v prom)'; });
 
-  // Resumen general semana
+  // ── 4. Calcular distancia desde posición actual y score ──
+  var lista = Object.entries(zonas).map(function(e){
+    var nombre = e[0], z = e[1];
+    var distKm = null;
+    if(miLat && z.lat){
+      distKm = haversine(miLat, miLng, z.lat, z.lng);
+    }
+    var promedio = z.t / z.n;
+    // Score: ingresos ponderados por cercanía (cuanto más cerca, mejor si el importe es similar)
+    // Si no hay distancia, ordenamos solo por importe
+    var score = distKm !== null
+      ? promedio / (1 + distKm)   // penaliza distancia
+      : promedio;
+    return { nombre:nombre, n:z.n, t:z.t, promedio:promedio, distKm:distKm, score:score, addr:z.addr };
+  });
+
+  // Ordenar por score (mejor relación importe/distancia)
+  lista.sort(function(a,b){ return b.score - a.score; });
+
+  var top = lista.slice(0, 6);
+  var topTexto = top.map(function(z){
+    var dist = z.distKm !== null
+      ? (z.distKm < 1 ? Math.round(z.distKm*1000)+'m' : z.distKm.toFixed(1)+'km')
+      : '?km';
+    return z.nombre + ' (' + z.n + 'v, €' + z.promedio.toFixed(2) + '/v, a ' + dist + ')';
+  }).join(' | ');
+
+  // ── 5. Resumen semana ─────────────────────────
   var semana = DB.viajes.filter(function(v){
-    var d = new Date(); d.setDate(d.getDate() - 7);
-    return new Date(v.ts) > d;
+    var d = new Date(); d.setDate(d.getDate()-7); return new Date(v.ts) > d;
   });
   var totalSem = semana.reduce(function(s,v){ return s+v.total; }, 0);
 
+  // ── 6. Prompt para Claude ─────────────────────
+  var posTexto = miLat ? miLat.toFixed(4)+','+miLng.toFixed(4) : 'desconocida';
   var prompt =
-    'Eres el asistente de un taxista en Madrid. Basándote en su historial de viajes, recomiéndale dónde ir a buscar clientela AHORA MISMO. Sé concreto, práctico y breve (máximo 4 líneas).\n\n' +
-    'DATOS ACTUALES:\n' +
-    '- Día y hora: ' + diaNom + ', ' + String(hora).padStart(2,'0') + ':00h\n' +
-    '- Viaje recién terminado en: ' + (viajeRecien.endAddr || viajeRecien.startAddr || 'desconocido') + '\n' +
-    '- Distancia recorrida: ' + (viajeRecien.distKm||0) + ' km\n' +
-    '- Importe: €' + viajeRecien.total + '\n\n' +
-    'HISTORIAL — ' + diaNom + ' entre ' + Math.max(0,hora-2) + ':00h y ' + Math.min(23,hora+2) + ':00h (' + mismoBloque.length + ' viajes históricos):\n' +
-    (topZonas.length
-      ? 'Zonas con más ingresos: ' + topZonas.join(' | ')
-      : 'Sin datos suficientes para este horario aún.') + '\n\n' +
-    'Últimos 7 días: ' + semana.length + ' viajes, €' + totalSem.toFixed(2) + ' total.\n\n' +
-    'Da UNA recomendación clara de zona o calle concreta de Madrid donde ir ahora, con una razón breve basada en los datos. Si no hay datos suficientes, da una recomendación general para ese día/hora en Madrid.';
+    'Eres el asistente de un taxista en Madrid. Recomiéndale la próxima zona donde ir a buscar clientela AHORA MISMO.\n\n'+
+    'POSICIÓN ACTUAL: ' + posTexto + '\n'+
+    'Acaba de terminar en: ' + (viajeRecien.endAddr||viajeRecien.startAddr||'desconocido') + '\n'+
+    'Día y hora: ' + diaNom + ' ' + String(hora).padStart(2,'0') + ':00h\n\n'+
+    'ZONAS HISTÓRICAS (ordenadas por mejor relación ingreso/distancia):\n'+
+    (top.length ? topTexto : 'Sin datos suficientes aún.') + '\n\n'+
+    'Últimos 7 días: ' + semana.length + ' viajes, €' + totalSem.toFixed(2) + ' total.\n\n'+
+    'Indica la zona MÁS RENTABLE considerando que está cerca y ha dado buenos ingresos. '+
+    'Sé muy breve (2-3 líneas). Menciona la distancia aproximada si la conoces.';
 
+  // ── 7. Mostrar resultado local inmediato ──────
+  //    (mientras espera la respuesta de IA o si falla)
+  var iconos = ['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣'];
+  var htmlLocal = top.length
+    ? top.map(function(z, i){
+        var dist = z.distKm !== null
+          ? '<span style="color:var(--acc);font-family:var(--mono);font-size:.65rem"> · '+(z.distKm<1?Math.round(z.distKm*1000)+'m':z.distKm.toFixed(1)+' km')+'</span>'
+          : '';
+        var ing  = '<span style="color:var(--green);font-family:var(--mono);font-size:.65rem"> · €'+z.promedio.toFixed(2)+'/v</span>';
+        var cnt  = '<span style="color:var(--muted);font-family:var(--mono);font-size:.6rem"> ('+z.n+'v)</span>';
+        return '<div style="padding:7px 0;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">'+
+               '<span style="font-size:1rem">'+iconos[i]+'</span>'+
+               '<div><div style="font-size:.78rem;font-weight:600">'+z.nombre+cnt+'</div>'+
+               '<div>'+ing+dist+'</div></div></div>';
+      }).join('')
+    : '<div style="color:var(--muted);font-size:.78rem">Sin datos aún para '+diaNom+' a las '+hora+'h.<br>Añade más viajes para ver recomendaciones.</div>';
+
+  content.innerHTML =
+    '<div style="font-size:.6rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:6px">'+
+    (miLat ? '📍 Ordenado por cercanía + ingresos' : '📊 Ordenado por ingresos (sin GPS)') +
+    '</div>' + htmlLocal +
+    '<div id="iaRespuesta" style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);'+
+    'font-size:.75rem;line-height:1.6;color:var(--muted2)">'+
+    '<span style="color:var(--purple);font-weight:600">🤖 IA analizando...</span></div>';
+
+  // ── 8. Llamada a Claude (enriquece el resultado) ──
   try{
     var resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 300,
-        messages: [{ role: 'user', content: prompt }]
+        max_tokens: 200,
+        messages: [{ role:'user', content: prompt }]
       })
     });
     var data = await resp.json();
-    var texto = (data.content || []).filter(function(b){ return b.type==='text'; }).map(function(b){ return b.text; }).join('');
-    if(!texto) throw new Error('Sin respuesta');
-    content.innerHTML = '<div style="line-height:1.7">' + texto.replace(/\n/g,'<br>') + '</div>';
+    var texto = (data.content||[]).filter(function(b){ return b.type==='text'; }).map(function(b){ return b.text; }).join('');
+    if(texto){
+      var iaEl = document.getElementById('iaRespuesta');
+      if(iaEl) iaEl.innerHTML = '<span style="color:var(--purple);font-weight:600">🤖 IA:</span> ' + texto.replace(/\n/g,'<br>');
+    }
   } catch(e){
-    // Si la API no está disponible en este contexto, mostrar recomendación local
-    var recLocal = topZonas.length
-      ? '<strong>Basado en tu historial:</strong><br>' + topZonas.slice(0,3).map(function(z,i){ return ['🥇','🥈','🥉'][i]+' '+z; }).join('<br>')
-      : 'Aún no hay datos suficientes para ' + diaNom + ' a las ' + hora + 'h.<br>Completa más viajes para obtener recomendaciones personalizadas.';
-    content.innerHTML = recLocal;
+    var iaEl = document.getElementById('iaRespuesta');
+    if(iaEl) iaEl.style.display = 'none';
   }
 }
 
@@ -1290,8 +1407,7 @@ function toast(msg, bg){
 // ══════════════════════════════════════════════
 renderQuickStats();
 updateStorageBadge();
-var sheetsUrl = getSheetsUrl();
-if(sheetsUrl) setTimeout(loadFromSheets, 1200);
+setTimeout(function(){ loadFromSheets(false); }, 1500);
 </script>
 </body>
 </html>
