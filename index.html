@@ -205,7 +205,28 @@ select option{background:var(--s2)}
         <button class="bb start" id="btnStart" onclick="startTrip()">🚦 Iniciar Viaje</button>
       </div>
       <div class="sg" id="quickStats"></div>
-    </div>
+
+      <!-- Panel de recomendación IA -->
+      <div id="recPanel" style="display:none">
+        <div style="background:linear-gradient(135deg,rgba(168,85,247,.12),rgba(168,85,247,.05));border:1px solid rgba(168,85,247,.3);border-radius:var(--r);padding:14px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <span style="font-size:1.2rem">🤖</span>
+            <div>
+              <div style="font-size:.65rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--purple)">IA · Próxima zona</div>
+              <div style="font-size:.6rem;color:var(--muted);font-family:var(--mono)" id="recMeta"></div>
+            </div>
+            <button onclick="document.getElementById('recPanel').style.display='none'" style="margin-left:auto;background:none;border:none;color:var(--muted);font-size:1rem;cursor:pointer">✕</button>
+          </div>
+          <div id="recContent" style="font-size:.82rem;line-height:1.6;color:var(--text)">
+            <div style="display:flex;align-items:center;gap:8px;color:var(--muted);font-family:var(--mono);font-size:.75rem">
+              <div style="width:8px;height:8px;border-radius:50%;background:var(--purple);animation:bl 1s infinite"></div>
+              Analizando historial...
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /stateIdle -->
 
     <div id="stateActive" style="display:none">
       <div class="card">
@@ -234,6 +255,13 @@ select option{background:var(--s2)}
           <div class="fg" id="efectivoGroup"><label>Cobrado en efectivo (€)</label><input type="number" id="inp-efectivo" placeholder="0.00" step="0.01" min="0" inputmode="decimal" oninput="calcCambio()"></div>
         </div>
         <div class="cd" id="cambioDisplay" style="display:none;margin-bottom:10px"><span>💰 Cambio a devolver</span><span id="cambioAmt" style="font-weight:700">€0,00</span></div>
+        <div class="fg" style="margin-bottom:10px">
+          <label>Por donde paso <span style="font-weight:400;color:var(--muted)">(se actualiza solo con GPS)</span></label>
+          <div style="position:relative">
+            <input type="text" id="inp-ruta" placeholder="Ej: Gran Vía, Atocha...">
+            <div id="rutaLoading" style="display:none;position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:.65rem;color:var(--yellow);font-family:var(--mono)">📍...</div>
+          </div>
+        </div>
         <div class="fg" style="margin-bottom:14px"><label>Nota (opcional)</label><input type="text" id="inp-nota" placeholder="Aeropuerto, evento..."></div>
         <button class="sb" id="btnSave" onclick="saveTrip()">✅ Guardar Viaje</button>
         <button class="cb" onclick="cancelTrip()">✖ Cancelar viaje</button>
@@ -447,54 +475,111 @@ var DB = loadDB();
 
 // ══════════════════════════════════════════════
 // SHEETS SYNC
+// URL del Apps Script de Marcos
 // ══════════════════════════════════════════════
+var SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxEL8OQv3f4RPU-IIbKpEBQbL8vbr1S_Eo9NVmh9sdwwn6AECzWs8R1pXUPip2foHR1/exec';
+
 async function syncToSheets(viaje){
-  var url = getSheetsUrl();
-  if(!url) return;
   try{
-    var row = {id:viaje.id, fecha:viaje.fecha, ts:viaje.ts, pago:viaje.pago,
-               plataforma:viaje.plataforma||'', total:viaje.total,
-               startLat:viaje.startLat||'', startLng:viaje.startLng||'',
-               startAddr:viaje.startAddr||'', duracion:viaje.duracion||0};
-    await fetch(url, {method:'POST', mode:'no-cors', headers:{'Content-Type':'application/json'}, body:JSON.stringify(row)});
+    // Enviamos todos los campos — el script ignorará los que no conozca
+    var row = {
+      id:        viaje.id,
+      fecha:     viaje.fecha,
+      ts:        viaje.ts,
+      hora:      viaje.hora,
+      diaSem:    viaje.diaSem,
+      pago:      viaje.pago,
+      plataforma:viaje.plataforma || '',
+      total:     viaje.total,
+      efectivo:  viaje.efectivo  || 0,
+      duracion:  viaje.duracion  || 0,
+      distKm:    viaje.distKm    || 0,
+      // Origen (nombres compatibles con el script viejo: Lat/Lng/Direccion)
+      startLat:  viaje.startLat  || '',
+      startLng:  viaje.startLng  || '',
+      startAddr: viaje.startAddr || '',
+      // Destino (nuevos campos)
+      endLat:    viaje.endLat    || '',
+      endLng:    viaje.endLng    || '',
+      endAddr:   viaje.endAddr   || '',
+      // Ruta intermedia
+      ruta:      viaje.ruta      || '',
+      nota:      viaje.nota      || ''
+    };
+    var r = await fetch(SHEETS_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(row)
+    });
+    console.log('Sheets POST enviado');
   } catch(e){ console.warn('Sheets sync error:', e); }
 }
 
-async function loadFromSheets(){
-  var url = getSheetsUrl();
-  if(!url) return;
+async function loadFromSheets(manual){
+  var statusEl = document.getElementById('sheetsStatus');
+  if(statusEl) statusEl.textContent = '🔄 Sincronizando...';
   try{
-    var r = await fetch(url + '?action=get', {mode:'cors'});
-    if(!r.ok) return;
+    var r = await fetch(SHEETS_URL + '?action=get', {mode:'cors', cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP ' + r.status);
     var data = await r.json();
-    if(!Array.isArray(data) || !data.length) return;
+    if(!Array.isArray(data) || !data.length){
+      if(statusEl) statusEl.textContent = '🔗 Conectado — sin datos nuevos';
+      var sc = document.getElementById('sheetsCount');
+      if(sc) sc.textContent = '0';
+      return;
+    }
     var localIds = new Set(DB.viajes.map(function(v){ return String(v.id); }));
     var added = 0;
     data.forEach(function(row){
-      if(!row.ID && !row.id) return;
-      var rid = String(row.ID || row.id);
-      if(localIds.has(rid)) return;
-      var hora = parseInt(row.Hora || row.hora) || 0;
-      var diaSem = parseInt(row.DiaSem || row.diaSem) || 0;
-      var fecha = row.Fecha || row.fecha || '';
-      var ts = row.ts || (fecha ? fecha + 'T' + String(hora).padStart(2,'0') + ':00:00.000Z' : new Date().toISOString());
+      // Aceptar cualquier capitalización de ID
+      var rid = String(row.ID || row.id || row.Id || '');
+      if(!rid || localIds.has(rid)) return;
+      // Campos con fallback a nombres del script viejo (Lat/Lng/Direccion/Hora/DiaSem/Fecha/Pago/Total)
+      var hora   = parseInt(row.Hora    || row.hora   || 0);
+      var diaSem = parseInt(row.DiaSem  || row.diaSem || 0);
+      var fecha  = row.Fecha   || row.fecha  || '';
+      var ts     = row.ts || (fecha ? fecha + 'T' + String(hora).padStart(2,'0') + ':00:00.000Z' : new Date().toISOString());
+      var total  = parseFloat(row.Total    || row.total   || 0);
       DB.viajes.push({
-        id: parseInt(rid) || Date.now(),
-        fecha: fecha, ts: ts,
-        hora: hora, diaSem: diaSem,
-        pago: row.Pago || row.pago || 'efectivo',
-        plataforma: row.Plataforma || row.plataforma || '',
-        total: parseFloat(row.Total || row.total) || 0,
-        efectivo: parseFloat(row.Total || row.total) || 0,
-        nota: '',
-        startLat: parseFloat(row.Lat || row.startLat) || null,
-        startLng: parseFloat(row.Lng || row.startLng) || null,
-        startAddr: row.Direccion || row.startAddr || ''
+        id:         parseInt(rid) || Date.now(),
+        fecha:      fecha,
+        ts:         ts,
+        hora:       hora,
+        diaSem:     diaSem,
+        pago:       (row.Pago       || row.pago       || 'efectivo').toLowerCase(),
+        plataforma: row.Plataforma  || row.plataforma  || '',
+        total:      total,
+        efectivo:   parseFloat(row.Efectivo || row.efectivo) || total,
+        duracion:   parseInt(row.Duracion   || row.duracion) || 0,
+        distKm:     parseFloat(row.DistKm   || row.distKm)   || 0,
+        // Origen — compatible con Lat/Lng/Direccion del script viejo
+        startLat:   parseFloat(row.StartLat  || row.startLat  || row.Lat  || row.lat)  || null,
+        startLng:   parseFloat(row.StartLng  || row.startLng  || row.Lng  || row.lng)  || null,
+        startAddr:  row.StartAddr || row.startAddr || row.Direccion || row.direccion || '',
+        // Destino
+        endLat:     parseFloat(row.EndLat   || row.endLat)   || null,
+        endLng:     parseFloat(row.EndLng   || row.endLng)   || null,
+        endAddr:    row.EndAddr   || row.endAddr   || '',
+        ruta:       row.Ruta      || row.ruta      || '',
+        nota:       row.Nota      || row.nota      || ''
       });
       localIds.add(rid); added++;
     });
-    if(added > 0){ save(); renderQuickStats(); toast('📥 ' + added + ' viaje' + (added>1?'s':'') + ' cargado' + (added>1?'s':'') + ' de Sheets'); }
-  } catch(e){ console.warn('Sheets load error:', e); }
+    var sc = document.getElementById('sheetsCount');
+    if(sc) sc.textContent = data.length;
+    if(statusEl) statusEl.textContent = '🔗 Conectado — ' + data.length + ' registros';
+    if(added > 0){
+      save(); renderQuickStats();
+      toast('📥 ' + added + ' viaje' + (added>1?'s':'') + ' importado' + (added>1?'s':'') + ' de Sheets');
+    } else if(manual){
+      toast('✅ Ya sincronizado — sin viajes nuevos');
+    }
+  } catch(e){
+    console.warn('Sheets GET error:', e);
+    if(statusEl) statusEl.textContent = '❌ Error de conexión';
+    if(manual) toast('❌ No se pudo conectar con Sheets', '#ff4560');
+  }
 }
 
 // ══════════════════════════════════════════════
@@ -610,29 +695,54 @@ async function startTrip(){
   document.getElementById('tripDist').textContent = '0,0 km';
   btn.disabled = false; btn.innerHTML = '🚦 Iniciar Viaje';
   timerInterval = setInterval(updateTimer, 1000);
-  // Seguimiento de posición para calcular distancia en tiempo real
+  // watchPosition: distancia en tiempo real + punto final + ruta
+  var lastReverseTime = 0;
   if(navigator.geolocation && lat !== null){
     watchId = navigator.geolocation.watchPosition(
       function(p){
         if(!activeTrip) return;
         var newLat = p.coords.latitude, newLng = p.coords.longitude;
-        // Ignorar saltos con precisión muy mala (>80m) para evitar ruido GPS
         if(p.coords.accuracy > 80) return;
+        // Acumular distancia
         if(activeTrip.lastLat !== null){
           var d = haversine(activeTrip.lastLat, activeTrip.lastLng, newLat, newLng);
-          // Filtro: ignorar saltos >0.3 km entre muestras (GPS rogue)
           if(d < 0.3) activeTrip.distKm += d;
         }
         activeTrip.lastLat = newLat; activeTrip.lastLng = newLng;
+        // Guardar último punto (será el punto final al guardar)
+        activeTrip.endLat = newLat; activeTrip.endLng = newLng;
+        // Actualizar distancia en pantalla
         var km = activeTrip.distKm;
         document.getElementById('tripDist').textContent =
           km < 1 ? Math.round(km*1000) + ' m' : km.toFixed(1).replace('.', ',') + ' km';
+        // Actualizar campo "por donde paso" cada 30 segundos (sin sobreescribir si el usuario lo editó)
+        var now = Date.now();
+        if(now - lastReverseTime > 30000){
+          lastReverseTime = now;
+          var rl = document.getElementById('rutaLoading');
+          if(rl) rl.style.display = 'block';
+          reverseGeocode(newLat, newLng).then(function(addr){
+            activeTrip.endAddr = addr;
+            var inp = document.getElementById('inp-ruta');
+            // Solo actualizar si el campo está vacío o fue puesto por GPS (no editado por usuario)
+            if(inp && !inp.dataset.userEdited){
+              inp.value = addr;
+            }
+            if(rl) rl.style.display = 'none';
+          });
+        }
       },
-      function(){ /* silencioso si falla watchPosition */ },
+      function(){ /* silencioso */ },
       {enableHighAccuracy:true, maximumAge:3000, timeout:15000}
     );
   }
 }
+
+// Marcar el campo ruta como editado manualmente por el usuario
+document.addEventListener('DOMContentLoaded', function(){
+  var inp = document.getElementById('inp-ruta');
+  if(inp) inp.addEventListener('input', function(){ inp.dataset.userEdited = '1'; });
+});
 
 function updateTimer(){
   if(!activeTrip) return;
@@ -683,9 +793,13 @@ async function saveTrip(){
     total: total,
     efectivo: efectivo,
     nota: document.getElementById('inp-nota').value,
-    startLat: activeTrip ? activeTrip.startLat : null,
-    startLng: activeTrip ? activeTrip.startLng : null,
+    ruta: document.getElementById('inp-ruta').value,
+    startLat:  activeTrip ? activeTrip.startLat  : null,
+    startLng:  activeTrip ? activeTrip.startLng  : null,
     startAddr: activeTrip ? activeTrip.startAddr : '',
+    endLat:    activeTrip ? (activeTrip.endLat  || null) : null,
+    endLng:    activeTrip ? (activeTrip.endLng  || null) : null,
+    endAddr:   activeTrip ? (activeTrip.endAddr || '') : '',
     duracion: activeTrip ? Math.floor((Date.now() - activeTrip.startTime) / 1000) : 0,
     distKm: activeTrip ? parseFloat((activeTrip.distKm||0).toFixed(2)) : 0
   };
@@ -694,15 +808,105 @@ async function saveTrip(){
   var saved = save();
 
   if(!saved){
-    DB.viajes.pop(); // revertir si no se pudo guardar
+    DB.viajes.pop();
     btn.disabled = false; btn.textContent = '✅ Guardar Viaje';
     return;
   }
 
   syncToSheets(viaje);
+  var viajeParaRec = JSON.parse(JSON.stringify(viaje)); // copia antes de reset
   resetTripState();
   toast('✅ Viaje guardado — €' + fmt(total));
   btn.disabled = false; btn.textContent = '✅ Guardar Viaje';
+
+  // Lanzar recomendación IA en base al historial
+  pedirRecomendacion(viajeParaRec);
+}
+
+// ══════════════════════════════════════════════
+// RECOMENDACIÓN IA — llama a Claude con historial
+// ══════════════════════════════════════════════
+async function pedirRecomendacion(viajeRecien){
+  var panel   = document.getElementById('recPanel');
+  var content = document.getElementById('recContent');
+  var meta    = document.getElementById('recMeta');
+  panel.style.display = 'block';
+  content.innerHTML =
+    '<div style="display:flex;align-items:center;gap:8px;color:var(--muted);font-family:var(--mono);font-size:.75rem">' +
+    '<div style="width:8px;height:8px;border-radius:50%;background:var(--purple);animation:bl 1s infinite"></div>' +
+    'Analizando historial...</div>';
+
+  var ahora  = new Date();
+  var hora   = ahora.getHours();
+  var dias   = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+  var diaNom = dias[ahora.getDay()];
+
+  meta.textContent = diaNom + ' ' + String(hora).padStart(2,'0') + ':00 · ' + DB.viajes.length + ' viajes en historial';
+
+  // Construir resumen del historial: últimas semanas, mismo día/hora ±2h
+  var mismoBloque = DB.viajes.filter(function(v){
+    return v.diaSem === ahora.getDay() && Math.abs(v.hora - hora) <= 2;
+  });
+
+  // Top zonas de salida por ingresos
+  var zonas = {};
+  mismoBloque.forEach(function(v){
+    var z = v.endAddr || v.startAddr || '';
+    if(!z) return;
+    // Simplificar a nombre de calle principal
+    var k = z.split(',')[0].trim();
+    if(!zonas[k]) zonas[k] = {n:0, t:0, ejemplos:[]};
+    zonas[k].n++;
+    zonas[k].t += v.total;
+    if(zonas[k].ejemplos.length < 2) zonas[k].ejemplos.push(z);
+  });
+  var topZonas = Object.entries(zonas)
+    .sort(function(a,b){ return b[1].t - a[1].t; })
+    .slice(0,6)
+    .map(function(e){ return e[0] + ' (' + e[1].n + ' viajes, €' + (e[1].t/e[1].n).toFixed(2) + '/v prom)'; });
+
+  // Resumen general semana
+  var semana = DB.viajes.filter(function(v){
+    var d = new Date(); d.setDate(d.getDate() - 7);
+    return new Date(v.ts) > d;
+  });
+  var totalSem = semana.reduce(function(s,v){ return s+v.total; }, 0);
+
+  var prompt =
+    'Eres el asistente de un taxista en Madrid. Basándote en su historial de viajes, recomiéndale dónde ir a buscar clientela AHORA MISMO. Sé concreto, práctico y breve (máximo 4 líneas).\n\n' +
+    'DATOS ACTUALES:\n' +
+    '- Día y hora: ' + diaNom + ', ' + String(hora).padStart(2,'0') + ':00h\n' +
+    '- Viaje recién terminado en: ' + (viajeRecien.endAddr || viajeRecien.startAddr || 'desconocido') + '\n' +
+    '- Distancia recorrida: ' + (viajeRecien.distKm||0) + ' km\n' +
+    '- Importe: €' + viajeRecien.total + '\n\n' +
+    'HISTORIAL — ' + diaNom + ' entre ' + Math.max(0,hora-2) + ':00h y ' + Math.min(23,hora+2) + ':00h (' + mismoBloque.length + ' viajes históricos):\n' +
+    (topZonas.length
+      ? 'Zonas con más ingresos: ' + topZonas.join(' | ')
+      : 'Sin datos suficientes para este horario aún.') + '\n\n' +
+    'Últimos 7 días: ' + semana.length + ' viajes, €' + totalSem.toFixed(2) + ' total.\n\n' +
+    'Da UNA recomendación clara de zona o calle concreta de Madrid donde ir ahora, con una razón breve basada en los datos. Si no hay datos suficientes, da una recomendación general para ese día/hora en Madrid.';
+
+  try{
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 300,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    var data = await resp.json();
+    var texto = (data.content || []).filter(function(b){ return b.type==='text'; }).map(function(b){ return b.text; }).join('');
+    if(!texto) throw new Error('Sin respuesta');
+    content.innerHTML = '<div style="line-height:1.7">' + texto.replace(/\n/g,'<br>') + '</div>';
+  } catch(e){
+    // Si la API no está disponible en este contexto, mostrar recomendación local
+    var recLocal = topZonas.length
+      ? '<strong>Basado en tu historial:</strong><br>' + topZonas.slice(0,3).map(function(z,i){ return ['🥇','🥈','🥉'][i]+' '+z; }).join('<br>')
+      : 'Aún no hay datos suficientes para ' + diaNom + ' a las ' + hora + 'h.<br>Completa más viajes para obtener recomendaciones personalizadas.';
+    content.innerHTML = recLocal;
+  }
 }
 
 function cancelTrip(){
@@ -720,7 +924,10 @@ function resetTripState(){
   document.getElementById('stateActive').style.display = 'none';
   document.getElementById('activeBanner').style.display = 'none';
   document.getElementById('tripTimer').textContent = '00:00';
-  ['inp-total','inp-efectivo','inp-nota'].forEach(function(id){ document.getElementById(id).value = ''; });
+  ['inp-total','inp-efectivo','inp-nota','inp-ruta'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el){ el.value = ''; delete el.dataset.userEdited; }
+  });
   document.getElementById('cambioDisplay').style.display = 'none';
   document.querySelectorAll('.po').forEach(function(o){ o.classList.remove('sel'); });
   document.querySelector('.po[data-pago="efectivo"]').classList.add('sel');
