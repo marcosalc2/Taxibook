@@ -206,26 +206,6 @@ select option{background:var(--s2)}
       </div>
       <div class="sg" id="quickStats"></div>
 
-      <!-- Panel de recomendación IA -->
-      <div id="recPanel" style="display:none">
-        <div style="background:linear-gradient(135deg,rgba(168,85,247,.12),rgba(168,85,247,.05));border:1px solid rgba(168,85,247,.3);border-radius:var(--r);padding:14px">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-            <span style="font-size:1.2rem">🤖</span>
-            <div>
-              <div style="font-size:.65rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--purple)">IA · Próxima zona</div>
-              <div style="font-size:.6rem;color:var(--muted);font-family:var(--mono)" id="recMeta"></div>
-            </div>
-            <button onclick="document.getElementById('recPanel').style.display='none'" style="margin-left:auto;background:none;border:none;color:var(--muted);font-size:1rem;cursor:pointer">✕</button>
-          </div>
-          <div id="recContent" style="font-size:.82rem;line-height:1.6;color:var(--text)">
-            <div style="display:flex;align-items:center;gap:8px;color:var(--muted);font-family:var(--mono);font-size:.75rem">
-              <div style="width:8px;height:8px;border-radius:50%;background:var(--purple);animation:bl 1s infinite"></div>
-              Analizando historial...
-            </div>
-          </div>
-        </div>
-      </div>
-
     </div><!-- /stateIdle -->
 
     <div id="stateActive" style="display:none">
@@ -266,8 +246,24 @@ select option{background:var(--s2)}
         <button class="sb" id="btnSave" onclick="saveTrip()">✅ Guardar Viaje</button>
         <button class="cb" onclick="cancelTrip()">✖ Cancelar viaje</button>
       </div>
+    </div><!-- /stateActive -->
+
+    <!-- Panel recomendación IA — fuera de stateIdle/stateActive para que siempre sea visible -->
+    <div id="recPanel" style="display:none;margin-top:14px">
+      <div style="background:linear-gradient(135deg,rgba(168,85,247,.12),rgba(168,85,247,.05));border:1px solid rgba(168,85,247,.3);border-radius:var(--r);padding:14px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <span style="font-size:1.2rem">🤖</span>
+          <div style="flex:1">
+            <div style="font-size:.65rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--purple)">IA · Próxima zona</div>
+            <div style="font-size:.6rem;color:var(--muted);font-family:var(--mono)" id="recMeta"></div>
+          </div>
+          <button onclick="document.getElementById('recPanel').style.display='none'" style="background:none;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer;padding:4px">✕</button>
+        </div>
+        <div id="recContent" style="font-size:.82rem;line-height:1.6;color:var(--text)"></div>
+      </div>
     </div>
-  </div>
+
+  </div><!-- /sec-viaje -->
 
   <!-- HOY -->
   <div class="sec" id="sec-hoy">
