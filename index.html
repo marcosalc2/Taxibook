@@ -205,6 +205,9 @@ select option{background:var(--s2)}
         <button class="bb start" id="btnStart" onclick="startTrip()">🚦 Iniciar Viaje</button>
       </div>
       <div class="sg" id="quickStats"></div>
+      <button onclick="pedirRecomendacion(null)" style="width:100%;padding:13px;background:linear-gradient(135deg,rgba(168,85,247,.2),rgba(168,85,247,.08));border:1px solid rgba(168,85,247,.4);border-radius:var(--r);color:var(--purple);font-family:var(--font);font-size:.9rem;font-weight:700;cursor:pointer;margin-bottom:4px">
+        🤖 Ver recomendación de zona
+      </button>
 
     </div><!-- /stateIdle -->
 
@@ -473,38 +476,25 @@ var SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxEL8OQv3f4RPU-IIbKpEB
 
 async function syncToSheets(viaje){
   try{
-    // Enviamos todos los campos — el script ignorará los que no conozca
+    // Columnas exactas de la hoja: ID, Fecha, Hora, DiaSem, Pago, Total, Lat, Lng, Direccion
     var row = {
-      id:        viaje.id,
-      fecha:     viaje.fecha,
-      ts:        viaje.ts,
-      hora:      viaje.hora,
-      diaSem:    viaje.diaSem,
-      pago:      viaje.pago,
-      plataforma:viaje.plataforma || '',
-      total:     viaje.total,
-      efectivo:  viaje.efectivo  || 0,
-      duracion:  viaje.duracion  || 0,
-      distKm:    viaje.distKm    || 0,
-      // Origen (nombres compatibles con el script viejo: Lat/Lng/Direccion)
-      startLat:  viaje.startLat  || '',
-      startLng:  viaje.startLng  || '',
-      startAddr: viaje.startAddr || '',
-      // Destino (nuevos campos)
-      endLat:    viaje.endLat    || '',
-      endLng:    viaje.endLng    || '',
-      endAddr:   viaje.endAddr   || '',
-      // Ruta intermedia
-      ruta:      viaje.ruta      || '',
-      nota:      viaje.nota      || ''
+      ID:       viaje.id,
+      Fecha:    viaje.fecha,
+      Hora:     viaje.hora,
+      DiaSem:   viaje.diaSem,
+      Pago:     viaje.pago,
+      Total:    viaje.total,
+      Lat:      viaje.startLat  || '',
+      Lng:      viaje.startLng  || '',
+      Direccion:viaje.startAddr || viaje.endAddr || viaje.ruta || ''
     };
-    var r = await fetch(SHEETS_URL, {
+    await fetch(SHEETS_URL, {
       method: 'POST',
       mode: 'no-cors',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify(row)
     });
-    console.log('Sheets POST enviado');
+    console.log('Sheets POST enviado:', row);
   } catch(e){ console.warn('Sheets sync error:', e); }
 }
 
@@ -581,43 +571,44 @@ async function loadFromSheets(manual){
     }
     if(localIds.has(rid)) return;
 
-    var hora   = parseInt(row.Hora   || row.hora   || 0);
-    var diaSem = parseInt(row.DiaSem || row.diaSem || 0);
-    var fecha  = row.Fecha  || row.fecha  || '';
-    var total  = parseFloat(row.Total  || row.total  || 0);
-    var ts     = row.Timestamp || row.ts ||
-                 (fecha ? fecha + 'T' + String(hora).padStart(2,'0') + ':00:00.000Z'
-                        : new Date().toISOString());
+    // Columnas exactas de la hoja: ID, Fecha, Hora, DiaSem, Pago, Total, Lat, Lng, Direccion
+    var hora   = parseInt(row.Hora)   || 0;
+    var diaSem = parseInt(row.DiaSem) || 0;
+    var fecha  = row.Fecha || '';
+    var total  = parseFloat(row.Total) || 0;
+    var pago   = (row.Pago || 'efectivo').toLowerCase();
+    var lat    = parseFloat(row.Lat)  || null;
+    var lng    = parseFloat(row.Lng)  || null;
+    var dir    = row.Direccion || '';
+    var ts     = fecha
+      ? fecha + 'T' + String(hora).padStart(2,'0') + ':00:00.000Z'
+      : new Date().toISOString();
 
-    // Calcular diaSem desde fecha si no viene
+    // Calcular diaSem desde fecha si viene a 0
     if(!diaSem && fecha){
-      try{ diaSem = new Date(fecha).getDay(); } catch(e){}
-    }
-    // Calcular hora desde ts si no viene
-    if(!hora && ts){
-      try{ hora = new Date(ts).getHours(); } catch(e){}
+      try{ diaSem = new Date(fecha + 'T12:00:00').getDay(); }catch(e){}
     }
 
     DB.viajes.push({
-      id:         rid,
-      fecha:      fecha,
-      ts:         ts,
-      hora:       hora,
-      diaSem:     diaSem,
-      pago:       (row.Pago        || row.pago        || 'efectivo').toLowerCase(),
-      plataforma: row.Plataforma   || row.plataforma   || '',
-      total:      total,
-      efectivo:   parseFloat(row.Efectivo  || row.efectivo)  || total,
-      duracion:   parseInt(row.Duracion    || row.duracion)   || 0,
-      distKm:     parseFloat(row.DistKm   || row.distKm || row.Distancia || 0) || 0,
-      startLat:   parseFloat(row.StartLat || row.startLat || row.Lat || row.lat) || null,
-      startLng:   parseFloat(row.StartLng || row.startLng || row.Lng || row.lng) || null,
-      startAddr:  row.StartAddr   || row.startAddr   || row.Direccion || row.direccion || row.Origen || '',
-      endLat:     parseFloat(row.EndLat   || row.endLat)    || null,
-      endLng:     parseFloat(row.EndLng   || row.endLng)    || null,
-      endAddr:    row.EndAddr     || row.endAddr     || row.Destino  || '',
-      ruta:       row.Ruta        || row.ruta        || '',
-      nota:       row.Nota        || row.nota        || ''
+      id:        rid,
+      fecha:     fecha,
+      ts:        ts,
+      hora:      hora,
+      diaSem:    diaSem,
+      pago:      pago,
+      plataforma:'',
+      total:     total,
+      efectivo:  total,
+      duracion:  0,
+      distKm:    0,
+      startLat:  lat,
+      startLng:  lng,
+      startAddr: dir,
+      endLat:    null,
+      endLng:    null,
+      endAddr:   '',
+      ruta:      '',
+      nota:      ''
     });
     localIds.add(rid); added++;
   });
@@ -882,145 +873,143 @@ async function pedirRecomendacion(viajeRecien){
   var content = document.getElementById('recContent');
   var meta    = document.getElementById('recMeta');
   panel.style.display = 'block';
+  setTimeout(function(){ panel.scrollIntoView({behavior:'smooth',block:'start'}); }, 100);
+
   content.innerHTML =
     '<div style="display:flex;align-items:center;gap:8px;color:var(--muted);font-family:var(--mono);font-size:.75rem">' +
     '<div style="width:8px;height:8px;border-radius:50%;background:var(--purple);animation:bl 1s infinite"></div>' +
-    'Obteniendo posición y analizando historial...</div>';
+    'Analizando historial...</div>';
 
   var ahora  = new Date();
   var hora   = ahora.getHours();
   var dias   = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
   var diaNom = dias[ahora.getDay()];
-  meta.textContent = diaNom + ' ' + String(hora).padStart(2,'0') + ':00 · ' + DB.viajes.length + ' viajes en historial';
+  meta.textContent = diaNom + ' ' + String(hora).padStart(2,'0') + ':00 · ' + DB.viajes.length + ' viajes';
 
-  // ── 1. Obtener posición actual ────────────────
-  var miLat = viajeRecien.endLat   || viajeRecien.startLat   || null;
-  var miLng = viajeRecien.endLng   || viajeRecien.startLng   || null;
+  // 1. Posición actual — seguro aunque viajeRecien sea null
+  var miLat = null, miLng = null;
+  if(viajeRecien){
+    miLat = viajeRecien.endLat || viajeRecien.startLat || null;
+    miLng = viajeRecien.endLng || viajeRecien.startLng || null;
+  }
   try{
     var pos = await getLocation();
     miLat = pos.lat; miLng = pos.lng;
-  } catch(e){ /* usar coordenadas del último viaje */ }
+  } catch(e){ /* sin GPS, usar coords del viaje si las hay */ }
 
-  // ── 2. Mismo bloque horario (día ±2h) ─────────
-  var mismoBloque = DB.viajes.filter(function(v){
+  // 2. Seleccionar bloque horario con fallback progresivo
+  var bloqueUsado = DB.viajes.filter(function(v){
     return v.diaSem === ahora.getDay() && Math.abs(v.hora - hora) <= 2;
   });
+  var bloqueLabel = diaNom + ' ±2h';
+  if(bloqueUsado.length < 3){
+    bloqueUsado = DB.viajes.filter(function(v){ return Math.abs(v.hora - hora) <= 2; });
+    bloqueLabel = 'Todos los días ±2h';
+  }
+  if(bloqueUsado.length < 3){
+    bloqueUsado = DB.viajes.slice();
+    bloqueLabel = 'Historial completo';
+  }
 
-  // ── 3. Agrupar por zona de INICIO del viaje ──
-  //    (donde recogiste al cliente = donde hay demanda)
+  // 3. Agrupar por zona de INICIO (donde recogiste = donde hay demanda)
   var zonas = {};
-  mismoBloque.forEach(function(v){
-    // Usar la dirección y coordenadas de INICIO (donde arrancó el viaje)
+  bloqueUsado.forEach(function(v){
     var addr = v.startAddr || v.endAddr || '';
     if(!addr && !v.startLat) return;
-    var k = addr.split(',')[0].trim() || ('Zona ' + Object.keys(zonas).length);
-    if(!zonas[k]){
-      zonas[k] = {
-        n: 0, t: 0,
-        lat: v.startLat || null,
-        lng: v.startLng || null,
-        addr: addr
-      };
-    }
+    var k = addr ? addr.split(',')[0].trim() : ('Zona '+Object.keys(zonas).length);
+    if(!k) return;
+    if(!zonas[k]) zonas[k] = {n:0, t:0, lat:v.startLat||null, lng:v.startLng||null};
     zonas[k].n++;
     zonas[k].t += v.total;
-    // Actualizar coords con la más reciente si no las tenía
     if(!zonas[k].lat && v.startLat){ zonas[k].lat = v.startLat; zonas[k].lng = v.startLng; }
   });
 
-  // ── 4. Calcular distancia desde posición actual y score ──
+  // 4. Score = ingreso / (1 + distancia_km)
   var lista = Object.entries(zonas).map(function(e){
     var nombre = e[0], z = e[1];
-    var distKm = null;
-    if(miLat && z.lat){
-      distKm = haversine(miLat, miLng, z.lat, z.lng);
-    }
-    var promedio = z.t / z.n;
-    // Score: ingresos ponderados por cercanía (cuanto más cerca, mejor si el importe es similar)
-    // Si no hay distancia, ordenamos solo por importe
-    var score = distKm !== null
-      ? promedio / (1 + distKm)   // penaliza distancia
-      : promedio;
-    return { nombre:nombre, n:z.n, t:z.t, promedio:promedio, distKm:distKm, score:score, addr:z.addr };
+    var distKm = (miLat && z.lat) ? haversine(miLat, miLng, z.lat, z.lng) : null;
+    var prom   = z.t / z.n;
+    var score  = distKm !== null ? prom / (1 + distKm) : prom;
+    return {nombre:nombre, n:z.n, t:z.t, prom:prom, distKm:distKm, score:score};
   });
-
-  // Ordenar por score (mejor relación importe/distancia)
   lista.sort(function(a,b){ return b.score - a.score; });
-
   var top = lista.slice(0, 6);
-  var topTexto = top.map(function(z){
-    var dist = z.distKm !== null
-      ? (z.distKm < 1 ? Math.round(z.distKm*1000)+'m' : z.distKm.toFixed(1)+'km')
-      : '?km';
-    return z.nombre + ' (' + z.n + 'v, €' + z.promedio.toFixed(2) + '/v, a ' + dist + ')';
-  }).join(' | ');
 
-  // ── 5. Resumen semana ─────────────────────────
-  var semana = DB.viajes.filter(function(v){
-    var d = new Date(); d.setDate(d.getDate()-7); return new Date(v.ts) > d;
-  });
-  var totalSem = semana.reduce(function(s,v){ return s+v.total; }, 0);
+  // 5. Render inmediato sin esperar IA
+  if(!top.length){
+    content.innerHTML =
+      '<div style="color:var(--muted);font-size:.78rem;text-align:center;padding:12px">' +
+      'Sin viajes con dirección aún.<br>' +
+      '<span style="font-size:.65rem">Activa el GPS al iniciar viaje para ver recomendaciones.</span></div>';
+    return;
+  }
 
-  // ── 6. Prompt para Claude ─────────────────────
-  var posTexto = miLat ? miLat.toFixed(4)+','+miLng.toFixed(4) : 'desconocida';
-  var prompt =
-    'Eres el asistente de un taxista en Madrid. Recomiéndale la próxima zona donde ir a buscar clientela AHORA MISMO.\n\n'+
-    'POSICIÓN ACTUAL: ' + posTexto + '\n'+
-    'Acaba de terminar en: ' + (viajeRecien.endAddr||viajeRecien.startAddr||'desconocido') + '\n'+
-    'Día y hora: ' + diaNom + ' ' + String(hora).padStart(2,'0') + ':00h\n\n'+
-    'ZONAS HISTÓRICAS (ordenadas por mejor relación ingreso/distancia):\n'+
-    (top.length ? topTexto : 'Sin datos suficientes aún.') + '\n\n'+
-    'Últimos 7 días: ' + semana.length + ' viajes, €' + totalSem.toFixed(2) + ' total.\n\n'+
-    'Indica la zona MÁS RENTABLE considerando que está cerca y ha dado buenos ingresos. '+
-    'Sé muy breve (2-3 líneas). Menciona la distancia aproximada si la conoces.';
-
-  // ── 7. Mostrar resultado local inmediato ──────
-  //    (mientras espera la respuesta de IA o si falla)
   var iconos = ['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣'];
-  var htmlLocal = top.length
-    ? top.map(function(z, i){
-        var dist = z.distKm !== null
-          ? '<span style="color:var(--acc);font-family:var(--mono);font-size:.65rem"> · '+(z.distKm<1?Math.round(z.distKm*1000)+'m':z.distKm.toFixed(1)+' km')+'</span>'
-          : '';
-        var ing  = '<span style="color:var(--green);font-family:var(--mono);font-size:.65rem"> · €'+z.promedio.toFixed(2)+'/v</span>';
-        var cnt  = '<span style="color:var(--muted);font-family:var(--mono);font-size:.6rem"> ('+z.n+'v)</span>';
-        return '<div style="padding:7px 0;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">'+
-               '<span style="font-size:1rem">'+iconos[i]+'</span>'+
-               '<div><div style="font-size:.78rem;font-weight:600">'+z.nombre+cnt+'</div>'+
-               '<div>'+ing+dist+'</div></div></div>';
-      }).join('')
-    : '<div style="color:var(--muted);font-size:.78rem">Sin datos aún para '+diaNom+' a las '+hora+'h.<br>Añade más viajes para ver recomendaciones.</div>';
+  var htmlZonas = top.map(function(z, i){
+    var distStr = z.distKm !== null
+      ? (z.distKm < 1 ? Math.round(z.distKm*1000)+' m' : z.distKm.toFixed(1)+' km')
+      : null;
+    return '<div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">' +
+      '<span style="font-size:1.1rem;flex-shrink:0">' + iconos[i] + '</span>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:.8rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + z.nombre +
+          '<span style="color:var(--muted);font-weight:400;font-size:.65rem"> (' + z.n + 'v)</span></div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:2px">' +
+          '<span style="font-size:.68rem;color:var(--green);font-family:var(--mono)">€' + z.prom.toFixed(2) + '/v</span>' +
+          (distStr ? '<span style="font-size:.68rem;color:var(--acc);font-family:var(--mono)">📍 ' + distStr + '</span>' : '') +
+        '</div>' +
+      '</div></div>';
+  }).join('');
+
+  var ordenLabel = miLat
+    ? '<span style="color:var(--acc)">📍 Por cercanía + ingresos</span>'
+    : '<span style="color:var(--muted2)">📊 Por ingresos (activa GPS para ordenar por distancia)</span>';
 
   content.innerHTML =
-    '<div style="font-size:.6rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:6px">'+
-    (miLat ? '📍 Ordenado por cercanía + ingresos' : '📊 Ordenado por ingresos (sin GPS)') +
-    '</div>' + htmlLocal +
-    '<div id="iaRespuesta" style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);'+
-    'font-size:.75rem;line-height:1.6;color:var(--muted2)">'+
-    '<span style="color:var(--purple);font-weight:600">🤖 IA analizando...</span></div>';
+    '<div style="font-size:.58rem;font-family:var(--mono);margin-bottom:8px;line-height:1.6">' +
+    ordenLabel + '<br><span style="color:var(--muted)">' + bloqueLabel + ' · ' + bloqueUsado.length + ' viajes</span></div>' +
+    htmlZonas +
+    '<div id="iaRespuesta" style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);' +
+    'font-size:.75rem;line-height:1.6;color:var(--muted2)">' +
+    '<span style="color:var(--purple);font-size:.65rem;font-family:var(--mono)">🤖 IA analizando...</span></div>';
 
-  // ── 8. Llamada a Claude (enriquece el resultado) ──
+  // 6. Enriquecer con Claude
+  var topTexto = top.map(function(z){
+    var d = z.distKm !== null ? (z.distKm<1?Math.round(z.distKm*1000)+'m':z.distKm.toFixed(1)+'km') : '?';
+    return z.nombre + '(' + z.n + 'v €' + z.prom.toFixed(2) + '/v a ' + d + ')';
+  }).join(', ');
+
+  var prompt =
+    'Taxista en Madrid. Son las ' + String(hora).padStart(2,'0') + ':00h del ' + diaNom + '.
+' +
+    (viajeRecien ? 'Acaba de dejar al cliente en: ' + (viajeRecien.endAddr||viajeRecien.startAddr||'?') + '.
+' : '') +
+    'Zonas históricas ordenadas por rentabilidad/distancia: ' + topTexto + '.
+' +
+    'Recomienda la mejor zona en UNA frase corta y directa.';
+
   try{
-    var resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 200,
-        messages: [{ role:'user', content: prompt }]
-      })
+    var resp = await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:100,messages:[{role:'user',content:prompt}]})
     });
     var data = await resp.json();
-    var texto = (data.content||[]).filter(function(b){ return b.type==='text'; }).map(function(b){ return b.text; }).join('');
-    if(texto){
-      var iaEl = document.getElementById('iaRespuesta');
-      if(iaEl) iaEl.innerHTML = '<span style="color:var(--purple);font-weight:600">🤖 IA:</span> ' + texto.replace(/\n/g,'<br>');
+    var texto = (data.content||[]).filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('');
+    var iaEl = document.getElementById('iaRespuesta');
+    if(iaEl && texto){
+      iaEl.innerHTML =
+        '<span style="color:var(--purple);font-size:.65rem;font-family:var(--mono);font-weight:700">🤖 </span>' +
+        '<span style="color:var(--text)">' + texto.replace(/\n/g,'<br>') + '</span>';
+    } else if(iaEl){
+      iaEl.style.display = 'none';
     }
   } catch(e){
     var iaEl = document.getElementById('iaRespuesta');
     if(iaEl) iaEl.style.display = 'none';
   }
 }
+
 
 function cancelTrip(){
   if(!confirm('¿Cancelar el viaje en curso?')) return;
