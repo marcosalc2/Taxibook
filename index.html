@@ -324,7 +324,7 @@ select option{background:var(--s2)}
 // CONFIG
 // ════════════════════════════════════════════════
 var STORAGE_KEY = 'taxibookpro2';
-var SHEETS_URL  = 'https://script.google.com/macros/s/AKfycbxEL8OQv3f4RPU-IIbKpEBQbL8vbr1S_Eo9NVmh9sdwwn6AECzWs8R1pXUPip2foHR1/exec';
+var SHEETS_URL  = 'https://script.google.com/macros/s/AKfycbzXaOvPuH8yhpMQLC_8Bqz0Dc5SixsTkB5nNp6nUbLsBmqhfcrGanemShQFu2-KjSWQ/exec';
 // Columnas exactas de la hoja: ID | Fecha | Hora | DiaSem | Pago | Total | Lat | Lng | Direccion
 
 // ════════════════════════════════════════════════
@@ -477,6 +477,13 @@ async function startTrip(){
   document.getElementById('bannerLoc').textContent=lat?addr.slice(0,40):'Sin GPS';
   btn.disabled=false; btn.textContent='🚦 Iniciar Viaje';
   timerInt=setInterval(tickTimer,1000);
+
+  // Abrir Waze sin destino (modo libre)
+  var wazeApp='waze://';
+  var wazeWeb='https://waze.com/ul';
+  var t=setTimeout(function(){ window.open(wazeWeb,'_blank'); },1500);
+  window.addEventListener('blur',function(){ clearTimeout(t); },{once:true});
+  window.location.href=wazeApp;
   if(navigator.geolocation && lat!==null){
     var lastRev=0;
     watchId=navigator.geolocation.watchPosition(function(p){
@@ -985,6 +992,18 @@ function tripCard(v){
   var dur=v.duracion?Math.floor(v.duracion/60)+'min':'';
   var dist=v.dist>0?(v.dist<1?Math.round(v.dist*1000)+'m':v.dist.toFixed(1)+'km'):'';
   var plat=v.plataforma?'<span style="font-size:.6rem;color:var(--yellow);font-family:var(--mono);margin-left:4px">'+v.plataforma+'</span>':'';
+  // Botón Waze si hay dirección de inicio
+  var wazeBtn='';
+  if(v.startAddr&&v.startAddr!=='Sin GPS'){
+    var wazeQ=encodeURIComponent(v.startAddr+', Madrid');
+    var wazeUrl=v.startLat?'waze://?ll='+v.startLat+','+v.startLng+'&navigate=yes':'waze://?q='+wazeQ+'&navigate=yes';
+    var wazeWeb='https://waze.com/ul?q='+wazeQ+'&navigate=yes';
+    wazeBtn='<a href="'+wazeUrl+'" onclick="wazeClick(event,\''+wazeWeb+'\')" '+
+      'style="display:inline-flex;align-items:center;gap:3px;background:#1a3a2a;border:1px solid #00c853;'+
+      'border-radius:6px;padding:3px 8px;text-decoration:none;margin-top:4px">'+
+      '<img src="https://www.waze.com/favicon.ico" style="width:13px;height:13px;border-radius:2px" onerror="this.style.display=\'none\'">'+
+      '<span style="font-size:.6rem;font-weight:700;color:#00c853">Waze</span></a>';
+  }
   return '<div class="ti" id="ti'+v.id+'">'+
     '<div class="tii '+cl[v.pago]+'">'+ic[v.pago]+'</div>'+
     '<div class="tib">'+
@@ -993,6 +1012,7 @@ function tripCard(v){
       (v.pago==='efectivo'&&v.efectivo&&v.efectivo!==v.total?'<div class="ti-sub">Cobrado €'+fmt(v.efectivo)+' · Cambio €'+fmt(v.efectivo-v.total)+'</div>':'')+
       ((v.startAddr&&v.startAddr!=='Sin GPS')?'<div class="ti-loc">📍 '+v.startAddr+'</div>':'')+
       (v.nota?'<div class="ti-sub">💬 '+v.nota+'</div>':'')+
+      wazeBtn+
     '</div>'+
     '<button class="del-btn" onclick="delViaje(\''+v.id+'\')">🗑</button>'+
   '</div>';
