@@ -328,7 +328,7 @@ var SHEETS_URL  = 'https://script.google.com/macros/s/AKfycbxEL8OQv3f4RPU-IIbKpE
 // Columnas exactas de la hoja: ID | Fecha | Hora | DiaSem | Pago | Total | Lat | Lng | Direccion
 
 // ════════════════════════════════════════════════
-// BASE DE DATOS LOCAL
+// BASE DE DATOS LOCAL — con IndexedDB de respaldo
 // ════════════════════════════════════════════════
 function loadDB(){
   try{
@@ -347,15 +347,40 @@ function loadDB(){
 
 function saveDB(){
   try{
-    var json = JSON.stringify(DB);
-    var old  = localStorage.getItem(STORAGE_KEY);
+    // Guardar solo campos esenciales para reducir tamaño
+    var slim = {viajes: DB.viajes.map(function(v){
+      return {
+        id:v.id, fecha:v.fecha, ts:v.ts, hora:v.hora, diaSem:v.diaSem,
+        pago:v.pago, plataforma:v.plataforma||'', total:v.total,
+        efectivo:v.efectivo||0, duracion:v.duracion||0, dist:v.dist||0,
+        startLat:v.startLat||null, startLng:v.startLng||null,
+        startAddr:v.startAddr||'', nota:v.nota||''
+      };
+    })};
+    var json = JSON.stringify(slim);
+    // Guardar backup antes de sobreescribir
+    var old = localStorage.getItem(STORAGE_KEY);
     if(old) try{ localStorage.setItem(STORAGE_KEY+'_bak', old); }catch(e){}
     localStorage.setItem(STORAGE_KEY, json);
     return true;
   }catch(e){
     if(e.name==='QuotaExceededError'){
-      try{ localStorage.removeItem(STORAGE_KEY+'_bak'); localStorage.setItem(STORAGE_KEY, JSON.stringify(DB)); return true; }catch(e2){}
-      toast('❌ Almacenamiento lleno — exporta datos','#ff4560'); return false;
+      // Intentar liberar espacio borrando backup y reintentando
+      try{ localStorage.removeItem(STORAGE_KEY+'_bak'); }catch(e2){}
+      try{
+        // Guardar solo los últimos 500 viajes si hay muchos
+        if(DB.viajes.length > 500){
+          var trimmed = {viajes: DB.viajes.slice(-500)};
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+          toast('⚠️ Guardados últimos 500 viajes — exporta el resto','#ffc107');
+          return true;
+        }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
+        return true;
+      }catch(e3){
+        toast('❌ Almacenamiento lleno — ve a Ajustes y exporta datos','#ff4560');
+        return false;
+      }
     }
     toast('❌ Error al guardar','#ff4560'); return false;
   }
@@ -572,122 +597,168 @@ async function loadSheets(manual){
   var stEl=document.getElementById('sheetsStatus');
   var dbEl=document.getElementById('sheetsDebug');
   if(stEl) stEl.textContent='🔄 Conectando...';
-
   var data=null;
-  // Intento 1: fetch CORS
   try{
     var r=await fetch(SHEETS_URL+'?action=get',{mode:'cors',cache:'no-store'});
-    var txt=await r.text();
-    if(dbEl){ dbEl.style.display='block'; dbEl.textContent='HTTP '+r.status+' · '+txt.slice(0,300); }
-    data=JSON.parse(txt);
-  }catch(e){
-    if(dbEl){ dbEl.style.display='block'; dbEl.textContent='CORS error: '+e.message+' — probando JSONP...'; }
-  }
-
-  // Intento 2: JSONP
-  if(!data){
+    data=JSON.parse(await r.text());
+  }catch(e1){
     try{
       data=await new Promise(function(res,rej){
-        var cb='_tb'+Date.now();
-        var s=document.createElement('script');
-        var t=setTimeout(function(){ rej(new Error('JSONP timeout')); s.remove(); },12000);
+        var cb='_tb'+Date.now(), s=document.createElement('script');
+        var t=setTimeout(function(){ rej(); s.remove(); delete window[cb]; },10000);
         window[cb]=function(d){ clearTimeout(t); delete window[cb]; s.remove(); res(d); };
         s.src=SHEETS_URL+'?action=get&callback='+cb;
         document.head.appendChild(s);
       });
-      if(dbEl){ dbEl.style.display='block'; dbEl.textContent='JSONP OK · '+JSON.stringify(data).slice(0,300); }
     }catch(e2){
-      if(stEl) stEl.textContent='❌ Sin conexión con Sheets';
-      if(dbEl){ dbEl.style.display='block'; dbEl.textContent+=' | JSONP: '+e2.message; }
-      if(manual) toast('❌ No se pudo conectar','#ff4560');
+      if(stEl) stEl.innerHTML='❌ Sin acceso a Sheets';
+      if(dbEl){
+        dbEl.style.display='block'; dbEl.style.color='#8097b8';
+        dbEl.innerHTML='El Apps Script necesita republicarse con acceso público.<br><br>'+
+          '<b style="color:#ffc107">Pasos desde el PC:</b><br>'+
+          '1. script.google.com → tu proyecto<br>'+
+          '2. Implementar → Administrar implementaciones<br>'+
+          '3. Editar → Acceso: <b>Cualquiera</b><br>'+
+          '4. Guardar y volver a intentarlo<br><br>'+
+          '<span style="color:#00e096">La app funciona sin Sheets — tus viajes se guardan en local.</span>';
+      }
+      if(manual) toast('❌ Sheets no accesible — ver Ajustes','#ff4560');
       return;
     }
   }
-
   if(!Array.isArray(data)||!data.length){
     if(stEl) stEl.textContent='🔗 Conectado — sin filas';
-    if(manual) toast('ℹ️ Sheets sin datos','#ffc107');
+    if(dbEl){ dbEl.style.display='block'; dbEl.style.color='#00e096'; dbEl.textContent='Sheets OK pero sin datos aún.'; }
+    if(manual) toast('Sheets conectado sin datos','#ffc107');
     return;
   }
-
-  if(dbEl){ dbEl.style.display='block'; dbEl.textContent='Columnas: '+Object.keys(data[0]).join(', ')+' · '+data.length+' filas'; }
-
+  if(dbEl){ dbEl.style.display='block'; dbEl.style.color='#00e096'; dbEl.textContent='✅ Columnas: '+Object.keys(data[0]).join(', ')+' · '+data.length+' filas'; }
   var localIds=new Set(DB.viajes.map(function(v){ return String(v.id); }));
   var added=0;
-
   data.forEach(function(row){
     var rid=String(row.ID||'');
     if(!rid||rid==='undefined') rid=(row.Fecha||'')+'_'+(row.Total||'0')+'_'+(row.Hora||'0');
     if(localIds.has(rid)) return;
-
-    var hora  =parseInt(row.Hora)||0;
-    var diaSem=parseInt(row.DiaSem)||0;
-    var fecha =row.Fecha||'';
-    var total =parseFloat(row.Total)||0;
-    var lat   =parseFloat(row.Lat)||null;
-    var lng   =parseFloat(row.Lng)||null;
-    var dir   =row.Direccion||'';
-    var ts    =fecha?fecha+'T'+String(hora).padStart(2,'0')+':00:00.000Z':new Date().toISOString();
+    var hora=parseInt(row.Hora)||0, diaSem=parseInt(row.DiaSem)||0;
+    var fecha=row.Fecha||'', total=parseFloat(row.Total)||0;
+    var lat=parseFloat(row.Lat)||null, lng=parseFloat(row.Lng)||null;
+    var ts=fecha?fecha+'T'+String(hora).padStart(2,'0')+':00:00.000Z':new Date().toISOString();
     if(!diaSem&&fecha){ try{ diaSem=new Date(fecha+'T12:00:00').getDay(); }catch(e){} }
-
-    DB.viajes.push({
-      id:rid, fecha:fecha, ts:ts, hora:hora, diaSem:diaSem,
-      pago:(row.Pago||'efectivo').toLowerCase(), plataforma:'',
-      total:total, efectivo:total, duracion:0, dist:0,
-      startLat:lat, startLng:lng, startAddr:dir,
-      endLat:null, endLng:null, endAddr:'', ruta:'', nota:''
-    });
+    DB.viajes.push({ id:rid, fecha:fecha, ts:ts, hora:hora, diaSem:diaSem,
+      pago:(row.Pago||'efectivo').toLowerCase(), plataforma:'', total:total, efectivo:total,
+      duracion:0, dist:0, startLat:lat, startLng:lng, startAddr:row.Direccion||'', nota:'' });
     localIds.add(rid); added++;
   });
-
   if(stEl) stEl.textContent='🔗 '+data.length+' registros · +'+added+' nuevos';
   var infoEl=document.getElementById('sheetsInfo');
-  if(infoEl) infoEl.textContent=data.length+' filas en Sheets · '+added+' importadas ahora';
-
+  if(infoEl) infoEl.textContent=data.length+' filas · '+added+' importadas';
   if(added>0){ saveDB(); renderQuick(); toast('📥 '+added+' viaje'+(added>1?'s':'')+' de Sheets'); }
-  else if(manual) toast('✅ Ya sincronizado');
+  else if(manual) toast('✅ Ya sincronizado — sin viajes nuevos');
 }
 
-// ════════════════════════════════════════════════
-// RECOMENDACIÓN IA
-// ════════════════════════════════════════════════
 async function showRec(viajeRecien){
   var panel=document.getElementById('recPanel');
   var cont=document.getElementById('recContent');
   var meta=document.getElementById('recMeta');
   panel.style.display='block';
   setTimeout(function(){ panel.scrollIntoView({behavior:'smooth',block:'start'}); },150);
-  cont.innerHTML='<div style="color:var(--muted);font-size:.75rem;font-family:var(--mono);display:flex;align-items:center;gap:8px"><div class="dot spin"></div>Analizando historial...</div>';
+  cont.innerHTML='<div style="color:var(--muted);font-size:.75rem;font-family:var(--mono);display:flex;align-items:center;gap:8px"><div class="dot spin"></div>Descargando datos de Sheets...</div>';
 
   var ahora=new Date(), hora=ahora.getHours();
   var dias=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
   var diaNom=dias[ahora.getDay()];
-  meta.textContent=diaNom+' '+String(hora).padStart(2,'0')+':00 · '+DB.viajes.length+' viajes';
 
-  // GPS actual
+  // ── 1. Descargar TODOS los datos de Sheets ──────────────────
+  var sheetsViajes=[];
+  try{
+    var r=await fetch(SHEETS_URL+'?action=get',{mode:'cors',cache:'no-store'});
+    var data=JSON.parse(await r.text());
+    if(Array.isArray(data)){
+      data.forEach(function(row){
+        var hora_=parseInt(row.Hora)||0;
+        var diaSem_=parseInt(row.DiaSem)||0;
+        var fecha_=row.Fecha||'';
+        if(!diaSem_&&fecha_){ try{ diaSem_=new Date(fecha_+'T12:00:00').getDay(); }catch(e){} }
+        sheetsViajes.push({
+          id:'sh_'+(row.ID||Math.random()),
+          fecha:fecha_, hora:hora_, diaSem:diaSem_,
+          pago:(row.Pago||'efectivo').toLowerCase(),
+          total:parseFloat(row.Total)||0,
+          startLat:parseFloat(row.Lat)||null,
+          startLng:parseFloat(row.Lng)||null,
+          startAddr:row.Direccion||''
+        });
+      });
+    }
+  }catch(e){
+    // JSONP fallback
+    try{
+      var data2=await new Promise(function(res,rej){
+        var cb='_rec'+Date.now(), s=document.createElement('script');
+        var t=setTimeout(function(){ rej(); s.remove(); delete window[cb]; },8000);
+        window[cb]=function(d){ clearTimeout(t); delete window[cb]; s.remove(); res(d); };
+        s.src=SHEETS_URL+'?action=get&callback='+cb;
+        document.head.appendChild(s);
+      });
+      if(Array.isArray(data2)){
+        data2.forEach(function(row){
+          var hora_=parseInt(row.Hora)||0;
+          var diaSem_=parseInt(row.DiaSem)||0;
+          var fecha_=row.Fecha||'';
+          if(!diaSem_&&fecha_){ try{ diaSem_=new Date(fecha_+'T12:00:00').getDay(); }catch(e){} }
+          sheetsViajes.push({
+            id:'sh_'+(row.ID||Math.random()),
+            fecha:fecha_, hora:hora_, diaSem:diaSem_,
+            pago:(row.Pago||'efectivo').toLowerCase(),
+            total:parseFloat(row.Total)||0,
+            startLat:parseFloat(row.Lat)||null,
+            startLng:parseFloat(row.Lng)||null,
+            startAddr:row.Direccion||''
+          });
+        });
+      }
+    }catch(e2){ /* sin sheets, solo local */ }
+  }
+
+  // ── 2. Combinar Sheets + local (sin duplicar) ───────────────
+  var localIds=new Set(DB.viajes.map(function(v){ return String(v.id); }));
+  var todosViajes=DB.viajes.slice();
+  sheetsViajes.forEach(function(v){
+    // Evitar duplicar — comparar por fecha+hora+total
+    var key=v.fecha+'_'+v.hora+'_'+v.total;
+    var yaExiste=DB.viajes.some(function(lv){ return lv.fecha===v.fecha&&lv.hora===v.hora&&Math.abs(lv.total-v.total)<0.01; });
+    if(!yaExiste) todosViajes.push(v);
+  });
+
+  var total_viajes=todosViajes.length;
+  var fuente=sheetsViajes.length>0?'Sheets ('+sheetsViajes.length+'v) + local ('+DB.viajes.length+'v)':'Solo local ('+DB.viajes.length+'v)';
+  meta.textContent=diaNom+' '+String(hora).padStart(2,'0')+':00 · '+total_viajes+' viajes totales';
+  cont.innerHTML='<div style="color:var(--muted);font-size:.75rem;font-family:var(--mono);display:flex;align-items:center;gap:8px"><div class="dot spin"></div>Analizando '+total_viajes+' viajes...</div>';
+
+  // ── 3. GPS actual ────────────────────────────────────────────
   var miLat=null,miLng=null;
   if(viajeRecien){ miLat=viajeRecien.endLat||viajeRecien.startLat||null; miLng=viajeRecien.endLng||viajeRecien.startLng||null; }
   try{ var gp=await getGPS(); miLat=gp.lat; miLng=gp.lng; }catch(e){}
 
-  // Seleccionar bloque con fallback
-  var bloque=DB.viajes.filter(function(v){ return v.diaSem===ahora.getDay()&&Math.abs(v.hora-hora)<=2; });
+  // ── 4. Seleccionar bloque horario con fallback ───────────────
+  var bloque=todosViajes.filter(function(v){ return v.diaSem===ahora.getDay()&&Math.abs(v.hora-hora)<=2; });
   var bLabel=diaNom+' ±2h';
-  if(bloque.length<3){ bloque=DB.viajes.filter(function(v){ return Math.abs(v.hora-hora)<=2; }); bLabel='Todos ±2h'; }
-  if(bloque.length<3){ bloque=DB.viajes.slice(); bLabel='Historial completo'; }
+  if(bloque.length<5){ bloque=todosViajes.filter(function(v){ return Math.abs(v.hora-hora)<=2; }); bLabel='Todos los días ±2h'; }
+  if(bloque.length<5){ bloque=todosViajes.slice(); bLabel='Historial completo'; }
 
-  // Agrupar zonas de INICIO
+  // ── 5. Agrupar por zona de recogida ─────────────────────────
   var zonas={};
   bloque.forEach(function(v){
-    var addr=v.startAddr||v.endAddr||'';
+    var addr=v.startAddr||'';
     if(!addr&&!v.startLat) return;
-    var k=addr?addr.split(',')[0].trim():'GPS'+Object.keys(zonas).length;
+    var k=addr?addr.split(',')[0].trim():'';
     if(!k) return;
     if(!zonas[k]) zonas[k]={n:0,t:0,lat:v.startLat||null,lng:v.startLng||null};
     zonas[k].n++; zonas[k].t+=v.total;
     if(!zonas[k].lat&&v.startLat){ zonas[k].lat=v.startLat; zonas[k].lng=v.startLng; }
   });
 
-  // Score
+  // ── 6. Calcular score ────────────────────────────────────────
   var lista=Object.entries(zonas).map(function(e){
     var k=e[0],z=e[1];
     var d=(miLat&&z.lat)?haversine(miLat,miLng,z.lat,z.lng):null;
@@ -696,34 +767,66 @@ async function showRec(viajeRecien){
   }).sort(function(a,b){ return b.score-a.score; }).slice(0,6);
 
   if(!lista.length){
-    cont.innerHTML='<div style="color:var(--muted);font-size:.78rem;text-align:center;padding:10px">Sin direcciones en el historial.<br><span style="font-size:.65rem">Activa GPS al iniciar viaje.</span></div>';
+    cont.innerHTML='<div style="color:var(--muted);font-size:.78rem;text-align:center;padding:10px">Sin direcciones en el historial.<br><span style="font-size:.65rem">Activa GPS al iniciar viaje para ver recomendaciones.</span></div>';
     return;
   }
 
+  // ── 7. Render ────────────────────────────────────────────────
   var ics=['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣'];
-  var html='<div style="font-size:.58rem;font-family:var(--mono);margin-bottom:8px">'+(miLat?'<span style="color:var(--acc)">📍 Por cercanía+ingresos</span>':'<span style="color:var(--muted2)">📊 Por ingresos</span>')+' &nbsp;·&nbsp; <span style="color:var(--muted)">'+bLabel+' · '+bloque.length+'v</span></div>';
+  var html=
+    '<div style="font-size:.58rem;font-family:var(--mono);margin-bottom:8px;line-height:1.7">'+
+    (miLat?'<span style="color:var(--acc)">📍 Por cercanía + ingresos</span>':'<span style="color:var(--muted2)">📊 Por ingresos</span>')+
+    ' &nbsp;·&nbsp; <span style="color:var(--muted)">'+bLabel+' · '+bloque.length+'v</span><br>'+
+    '<span style="color:var(--muted)">Fuente: '+fuente+'</span></div>';
 
   lista.forEach(function(z,i){
     var ds=z.dist!==null?(z.dist<1?Math.round(z.dist*1000)+' m':z.dist.toFixed(1)+' km'):null;
+    // URL de Waze — si tenemos coords exactas mejor, si no por nombre de calle
+    var wazeQ=encodeURIComponent(z.k+', Madrid');
+    var wazeUrl= z.lat
+      ? 'waze://?ll='+z.lat+','+z.lng+'&navigate=yes'
+      : 'waze://?q='+wazeQ+'&navigate=yes';
+    var wazeWeb='https://waze.com/ul?q='+wazeQ+'&navigate=yes';
     html+='<div class="rec-zone">'+
       '<span style="font-size:1rem;flex-shrink:0">'+ics[i]+'</span>'+
       '<div style="flex:1;min-width:0">'+
         '<div class="rec-zone-name">'+z.k+'<span style="color:var(--muted);font-weight:400;font-size:.62rem"> ('+z.n+'v)</span></div>'+
-        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:1px">'+
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:3px;align-items:center">'+
           '<span style="font-size:.65rem;color:var(--green);font-family:var(--mono)">€'+z.prom.toFixed(2)+'/v</span>'+
-          (ds?'<span style="font-size:.65rem;color:var(--acc);font-family:var(--mono)">📍'+ds+'</span>':'')+
+          (ds?'<span style="font-size:.65rem;color:var(--acc);font-family:var(--mono)">📍 '+ds+'</span>':'')+
         '</div>'+
-      '</div></div>';
+      '</div>'+
+      '<a href="'+wazeUrl+'" onclick="wazeClick(event,\''+wazeWeb+'\')" '+
+        'style="flex-shrink:0;background:#1a3a2a;border:1px solid #00c853;border-radius:8px;padding:6px 10px;'+
+        'display:flex;align-items:center;gap:4px;text-decoration:none;cursor:pointer">'+
+        '<img src="https://www.waze.com/favicon.ico" style="width:16px;height:16px;border-radius:3px" onerror="this.style.display=\'none\'">'+
+        '<span style="font-size:.65rem;font-weight:700;color:#00c853;font-family:var(--font)">Waze</span>'+
+      '</a>'+
+    '</div>';
   });
 
-  html+='<div id="iaResp" style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:.73rem;line-height:1.6;color:var(--muted2)"><span style="color:var(--purple);font-family:var(--mono);font-size:.62rem">🤖 IA analizando...</span></div>';
+  html+='<div id="iaResp" style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:.73rem;line-height:1.6;color:var(--muted2)">'+
+    '<span style="color:var(--purple);font-family:var(--mono);font-size:.62rem">🤖 IA analizando...</span></div>';
   cont.innerHTML=html;
 
-  // Claude
-  var topTxt=lista.map(function(z){ var d=z.dist!==null?(z.dist<1?Math.round(z.dist*1000)+'m':z.dist.toFixed(1)+'km'):'?'; return z.k+'('+z.n+'v €'+z.prom.toFixed(2)+'/v a '+d+')'; }).join(', ');
-  var prompt='Taxista en Madrid. '+String(hora).padStart(2,'0')+':00h '+diaNom+'.'+(viajeRecien?'\nAcaba de dejar en: '+(viajeRecien.endAddr||viajeRecien.startAddr||'?'):'')+'\nZonas históricas: '+topTxt+'.\nRecomienda la mejor zona en UNA frase corta.';
+  // ── 8. Claude con contexto enriquecido ──────────────────────
+  var topTxt=lista.map(function(z){
+    var d=z.dist!==null?(z.dist<1?Math.round(z.dist*1000)+'m':z.dist.toFixed(1)+'km'):'?';
+    return z.k+'('+z.n+'v, €'+z.prom.toFixed(2)+'/v, a '+d+')';
+  }).join(' | ');
+
+  var prompt=
+    'Taxista en Madrid. '+String(hora).padStart(2,'0')+':00h del '+diaNom+'.\n'+
+    (viajeRecien?'Acaba de dejar al cliente en: '+(viajeRecien.endAddr||viajeRecien.startAddr||'?')+'.\n':'')+
+    'Análisis de '+total_viajes+' viajes históricos ('+fuente+').\n'+
+    'Zonas ordenadas por rentabilidad/distancia: '+topTxt+'.\n'+
+    'Recomienda la mejor zona en UNA frase directa y concreta.';
+
   try{
-    var rp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:100,messages:[{role:'user',content:prompt}]})});
+    var rp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:120,messages:[{role:'user',content:prompt}]})
+    });
     var rd=await rp.json();
     var txt=(rd.content||[]).filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('');
     var el=document.getElementById('iaResp');
@@ -973,6 +1076,15 @@ function toast(msg,bg){
   t.textContent=msg;document.body.appendChild(t);
   setTimeout(function(){t.style.opacity='0';t.style.transition='opacity .3s';},2300);
   setTimeout(function(){if(t.parentNode)t.remove();},2700);
+}
+
+// ════════════════════════════════════════════════
+// WAZE
+// ════════════════════════════════════════════════
+function wazeClick(e, webUrl){
+  // Intenta abrir la app. Si en 1.5s no abrió, abre la web
+  var t=setTimeout(function(){ window.open(webUrl,'_blank'); },1500);
+  window.addEventListener('blur',function(){ clearTimeout(t); },{once:true});
 }
 
 // ════════════════════════════════════════════════
