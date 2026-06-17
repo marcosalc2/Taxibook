@@ -477,13 +477,6 @@ async function startTrip(){
   document.getElementById('bannerLoc').textContent=lat?addr.slice(0,40):'Sin GPS';
   btn.disabled=false; btn.textContent='🚦 Iniciar Viaje';
   timerInt=setInterval(tickTimer,1000);
-
-  // Abrir Waze sin destino (modo libre)
-  var wazeApp='waze://';
-  var wazeWeb='https://waze.com/ul';
-  var t=setTimeout(function(){ window.open(wazeWeb,'_blank'); },1500);
-  window.addEventListener('blur',function(){ clearTimeout(t); },{once:true});
-  window.location.href=wazeApp;
   if(navigator.geolocation && lat!==null){
     var lastRev=0;
     watchId=navigator.geolocation.watchPosition(function(p){
