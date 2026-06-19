@@ -3,6 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="theme-color" content="#080c14">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="TaxiBook Pro">
 <title>TaxiBook Pro</title>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
@@ -286,6 +291,12 @@ select option{background:var(--s2)}
 
 <!-- ══ AJUSTES ═════════════════════════════════ -->
 <div class="sec" id="sec-ajustes">
+
+  <div class="card">
+    <div class="ct">Notificaciones de horas punta</div>
+    <div id="notifStatus" style="font-size:.72rem;font-family:var(--mono);color:var(--muted2);margin-bottom:10px;line-height:1.6"></div>
+    <button class="btn-sec" style="width:100%;padding:12px" onclick="pedirPermisoNotif()" id="btnNotif">🔔 Activar avisos de horas punta</button>
+  </div>
 
   <div class="card">
     <div class="ct">Almacenamiento local</div>
@@ -1023,6 +1034,7 @@ function delViaje(id){
 // AJUSTES
 // ════════════════════════════════════════════════
 function renderAjustes(){
+  // Almacenamiento
   var n=DB.viajes.length;
   var bytes=(localStorage.getItem(STORAGE_KEY)||'').length*2;
   var pct=Math.min(Math.round(bytes/(5*1024*1024)*100),100);
@@ -1031,6 +1043,34 @@ function renderAjustes(){
   var bar=document.getElementById('storBar');
   bar.style.width=pct+'%';
   bar.className='stor-fill'+(pct>=80?' crit':pct>=60?' warn':'');
+
+  // Notificaciones
+  var nEl=document.getElementById('notifStatus');
+  var bEl=document.getElementById('btnNotif');
+  if(!('Notification' in window)){
+    nEl.innerHTML='<span style="color:var(--red)">Este navegador no soporta notificaciones.</span>';
+    if(bEl) bEl.style.display='none';
+  } else if(Notification.permission==='granted'){
+    var punta=calcHorasPunta().slice(0,5);
+    var puntaTxt=punta.length
+      ? punta.map(function(h){ return '<span style="color:var(--acc)">'+String(h.hora).padStart(2,'0')+'h</span> €'+h.prom.toFixed(2)+'/v ('+h.n+'v)'; }).join('<br>')
+      : 'Aún sin datos suficientes — añade más viajes.';
+    nEl.innerHTML='<span style="color:var(--green)">✅ Activadas</span><br><br>'+
+      '<span style="color:var(--muted);font-size:.6rem">TUS HORAS PUNTA DETECTADAS:</span><br>'+puntaTxt;
+    if(bEl){ bEl.textContent='🔕 Desactivar avisos'; bEl.onclick=desactivarNotif; }
+  } else if(Notification.permission==='denied'){
+    nEl.innerHTML='<span style="color:var(--red)">❌ Permiso denegado.</span><br><span style="color:var(--muted);font-size:.65rem">Actívalo en Ajustes del móvil → Chrome → Notificaciones.</span>';
+    if(bEl) bEl.style.display='none';
+  } else {
+    nEl.innerHTML='Te avisaremos 10 min antes de tus horas punta históricas.\n<br><span style="color:var(--muted);font-size:.65rem">Necesita mínimo 2 viajes por franja horaria.</span>';
+  }
+}
+
+function desactivarNotif(){
+  if(notifInterval){ clearInterval(notifInterval); notifInterval=null; }
+  localStorage.removeItem('taxibook_notif');
+  toast('🔕 Avisos desactivados','#ffc107');
+  renderAjustes();
 }
 
 function exportCSV(){
@@ -1101,10 +1141,98 @@ function wazeClick(e, webUrl){
 }
 
 // ════════════════════════════════════════════════
+// NOTIFICACIONES — Horas punta según historial
+// ════════════════════════════════════════════════
+var notifInterval = null;
+
+function calcHorasPunta(){
+  // Agrupa todos los viajes por hora y calcula media de ingresos
+  var horas = {};
+  DB.viajes.forEach(function(v){
+    if(!horas[v.hora]) horas[v.hora] = {n:0, t:0};
+    horas[v.hora].n++;
+    horas[v.hora].t += v.total;
+  });
+  // Devuelve array [{hora, prom, n}] ordenado por prom desc
+  return Object.entries(horas).map(function(e){
+    return {hora:parseInt(e[0]), prom:e[1].t/e[1].n, n:e[1].n};
+  }).filter(function(h){ return h.n >= 2; }) // mínimo 2 viajes para ser fiable
+    .sort(function(a,b){ return b.prom - a.prom; });
+}
+
+async function pedirPermisoNotif(){
+  if(!('Notification' in window)){ toast('Este navegador no soporta notificaciones','#ffc107'); return; }
+  var perm = await Notification.requestPermission();
+  if(perm === 'granted'){
+    toast('✅ Notificaciones activadas');
+    iniciarVigilancia();
+    localStorage.setItem('taxibook_notif','1');
+  } else {
+    toast('⚠️ Permiso denegado — actívalo en ajustes del móvil','#ffc107');
+  }
+}
+
+function enviarNotif(titulo, cuerpo){
+  if(Notification.permission !== 'granted') return;
+  try{
+    new Notification(titulo, {
+      body: cuerpo,
+      icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🚕</text></svg>',
+      badge: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🚕</text></svg>',
+      tag: 'taxibook-punta',
+      renotify: true
+    });
+  }catch(e){ console.warn('Notif error:',e); }
+}
+
+function iniciarVigilancia(){
+  if(notifInterval) clearInterval(notifInterval);
+  var ultimaNotif = {};
+  notifInterval = setInterval(function(){
+    // No avisar si hay viaje activo
+    if(trip) return;
+    var ahora = new Date();
+    var horaActual = ahora.getHours();
+    var minActual  = ahora.getMinutes();
+    // Solo avisar a :50 de cada hora (10 min antes de la siguiente)
+    if(minActual < 48 || minActual > 55) return;
+    // La hora punta que se avecina es horaActual+1
+    var horaProxima = (horaActual + 1) % 24;
+    var punta = calcHorasPunta();
+    var match = punta.find(function(h){ return h.hora === horaProxima; });
+    if(!match) return;
+    // Solo si es top 3 horas punta
+    var top3 = punta.slice(0,3).map(function(h){ return h.hora; });
+    if(top3.indexOf(horaProxima) === -1) return;
+    // No repetir la misma notif en la misma hora
+    var key = ahora.toDateString() + '_' + horaProxima;
+    if(ultimaNotif[key]) return;
+    ultimaNotif[key] = true;
+    // Solo avisar si esa hora tiene buen promedio (top del día de la semana también)
+    var diaSem = ahora.getDay();
+    var viajesDia = DB.viajes.filter(function(v){ return v.diaSem===diaSem && v.hora===horaProxima; });
+    var promDia = viajesDia.length
+      ? viajesDia.reduce(function(s,v){return s+v.total;},0) / viajesDia.length
+      : match.prom;
+    enviarNotif(
+      '⚡ Hora punta en 10 min',
+      'Las ' + String(horaProxima).padStart(2,'0') + ':00h — histórico €' +
+      promDia.toFixed(2) + '/viaje' +
+      (viajesDia.length ? ' ('+viajesDia.length+'v este '+['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][diaSem]+')' : '')
+    );
+  }, 60000); // revisar cada minuto
+}
+
+// ════════════════════════════════════════════════
 // INIT
 // ════════════════════════════════════════════════
 renderQuick();
 setTimeout(function(){ loadSheets(false); }, 1500);
+
+// Reactivar vigilancia si el usuario ya había dado permiso
+if(localStorage.getItem('taxibook_notif')==='1' && typeof Notification!=='undefined' && Notification.permission==='granted'){
+  iniciarVigilancia();
+}
 </script>
 </body>
 </html>
