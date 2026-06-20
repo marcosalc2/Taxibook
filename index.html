@@ -1123,12 +1123,19 @@ function renderAjustes(){
     nEl.innerHTML='<span style="color:var(--red)">Este navegador no soporta notificaciones.</span>';
     if(bEl) bEl.style.display='none';
   } else if(Notification.permission==='granted'){
-    var punta=calcHorasPunta().slice(0,5);
+    var punta=calcHorasPunta();
     var puntaTxt=punta.length
-      ? punta.map(function(h){ return '<span style="color:var(--acc)">'+String(h.hora).padStart(2,'0')+'h</span> €'+h.prom.toFixed(2)+'/v ('+h.n+'v)'; }).join('<br>')
-      : 'Aún sin datos suficientes — añade más viajes.';
+      ? punta.map(function(h){
+          return '<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border)">'+
+            '<span style="color:var(--acc)">'+String(h.hora).padStart(2,'0')+'h</span>'+
+            '<span style="color:var(--green);font-family:var(--mono)">€'+h.prom.toFixed(2)+'/v</span>'+
+            '<span style="color:var(--muted);font-family:var(--mono)">'+h.n+' viajes</span>'+
+          '</div>';
+        }).join('')
+      : '<span style="color:var(--muted)">Añade más viajes para detectar patrones.</span>';
     nEl.innerHTML='<span style="color:var(--green)">✅ Activadas</span><br><br>'+
-      '<span style="color:var(--muted);font-size:.6rem">TUS HORAS PUNTA DETECTADAS:</span><br>'+puntaTxt;
+      '<span style="color:var(--muted);font-size:.6rem;letter-spacing:1px">TODAS TUS HORAS CON DATOS:</span><br>'+
+      puntaTxt;
     if(bEl){ bEl.textContent='🔕 Desactivar avisos'; bEl.onclick=desactivarNotif; }
   } else if(Notification.permission==='denied'){
     nEl.innerHTML='<span style="color:var(--red)">❌ Permiso denegado.</span><br><span style="color:var(--muted);font-size:.65rem">Actívalo en Ajustes del móvil → Chrome → Notificaciones.</span>';
