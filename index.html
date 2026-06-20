@@ -183,6 +183,7 @@ select option{background:var(--s2)}
       <button class="btn-start" id="btnStart" onclick="startTrip()">🚦 Iniciar Viaje</button>
     </div>
     <div class="sg" id="quickStats"></div>
+    <div class="card" id="objetivoBar" style="padding:12px 14px;margin-bottom:12px"></div>
     <button class="btn-rec" onclick="showRec(null)">🤖 Ver recomendación de zona</button>
   </div>
 
@@ -291,6 +292,31 @@ select option{background:var(--s2)}
 
 <!-- ══ AJUSTES ═════════════════════════════════ -->
 <div class="sec" id="sec-ajustes">
+
+  <div class="card">
+    <div class="ct">Jornada y objetivo</div>
+
+    <div class="fg" style="margin-bottom:12px">
+      <label>Hora de inicio de jornada</label>
+      <div style="display:flex;align-items:center;gap:10px">
+        <input type="range" id="sldCorte" min="0" max="8" step="1"
+          style="flex:1;background:none;border:none;padding:4px 0;accent-color:var(--acc)"
+          oninput="updCorte(this.value)">
+        <span id="lblCorte" style="font-family:var(--mono);font-size:.9rem;color:var(--acc);min-width:45px;text-align:right"></span>
+      </div>
+      <div style="font-size:.6rem;color:var(--muted);margin-top:3px">Viajes antes de esta hora se asignan al día anterior</div>
+    </div>
+
+    <div class="fg">
+      <label>Objetivo diario de ingresos (€)</label>
+      <div style="display:flex;align-items:center;gap:10px">
+        <input type="range" id="sldObjetivo" min="50" max="500" step="10"
+          style="flex:1;background:none;border:none;padding:4px 0;accent-color:var(--green)"
+          oninput="updObjetivo(this.value)">
+        <span id="lblObjetivo" style="font-family:var(--mono);font-size:.9rem;color:var(--green);min-width:55px;text-align:right"></span>
+      </div>
+    </div>
+  </div>
 
   <div class="card">
     <div class="ct">Notificaciones de horas punta</div>
@@ -403,7 +429,21 @@ var DB = loadDB();
 // UTILIDADES
 // ════════════════════════════════════════════════
 function fmt(n){ return parseFloat(n||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}); }
-function today(){ return new Date().toISOString().slice(0,10); }
+function getCorteDia(){ return parseInt(localStorage.getItem('taxibook_corte')||'5'); }
+
+// Fecha de jornada: si son las 03:00 y el corte es 05h, pertenece al día anterior
+function jornadaFecha(date){
+  var d = date || new Date();
+  var corte = getCorteDia();
+  if(d.getHours() < corte){
+    var ayer = new Date(d);
+    ayer.setDate(ayer.getDate()-1);
+    return ayer.toISOString().slice(0,10);
+  }
+  return d.toISOString().slice(0,10);
+}
+
+function today(){ return jornadaFecha(new Date()); }
 function fmtD(d){ return new Date(d).toLocaleDateString('es-ES',{weekday:'short',day:'numeric',month:'short'}); }
 function fmtT(d){ return new Date(d).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}); }
 function getMon(d){ var x=new Date(d),day=x.getDay(),diff=(day===0)?-6:1-day; x.setDate(x.getDate()+diff); return x.toISOString().slice(0,10); }
@@ -535,7 +575,7 @@ async function saveTrip(){
   var btn=document.getElementById('btnSave'); btn.disabled=true; btn.textContent='⏳ Guardando...';
   var now=new Date();
   var v={
-    id:Date.now(), fecha:now.toISOString().slice(0,10), ts:now.toISOString(),
+    id:Date.now(), fecha:jornadaFecha(now), ts:now.toISOString(),
     hora:now.getHours(), diaSem:now.getDay(),
     pago:pago, plataforma:pago==='app'?plat:'',
     total:total,
@@ -849,6 +889,8 @@ async function showRec(viajeRecien){
 // ════════════════════════════════════════════════
 // RENDER QUICK STATS
 // ════════════════════════════════════════════════
+function getObjetivo(){ return parseFloat(localStorage.getItem('taxibook_objetivo')||'150'); }
+
 function renderQuick(){
   var t=today();
   var hoy=DB.viajes.filter(function(v){ return v.fecha===t; });
@@ -857,11 +899,33 @@ function renderQuick(){
   var sd=weekDays(getMon(t));
   var sem=DB.viajes.filter(function(v){return sd.indexOf(v.fecha)>=0;});
   var ts=sem.reduce(function(s,v){return s+v.total;},0);
+  var obj=getObjetivo();
+  var pct=Math.min(Math.round(th/obj*100),100);
+  var barColor=pct>=100?'var(--green)':pct>=70?'var(--yellow)':'var(--acc)';
+  var emoji=pct>=100?'🎯':pct>=70?'🔥':'⚡';
+
   document.getElementById('quickStats').innerHTML=
     stat('HOY','€'+fmt(th),hoy.length+' viajes','var(--green)','g')+
     stat('SEMANA','€'+fmt(ts),sem.length+' viajes','var(--acc)','b')+
     stat('EFECTIVO','€'+fmt(eh),'en caja','var(--yellow)','y')+
     stat('PROM.','€'+(hoy.length?fmt(th/hoy.length):'0,00'),'por viaje','var(--purple)','p');
+
+  // Barra de objetivo
+  var obEl=document.getElementById('objetivoBar');
+  if(obEl){
+    var restante=Math.max(obj-th,0);
+    obEl.innerHTML=
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
+        '<span style="font-size:.62rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted)">'+emoji+' Objetivo diario</span>'+
+        '<span style="font-family:var(--mono);font-size:.72rem;color:'+barColor+'">€'+fmt(th)+' / €'+fmt(obj)+'</span>'+
+      '</div>'+
+      '<div style="height:8px;background:var(--s3);border-radius:4px;overflow:hidden;margin-bottom:5px">'+
+        '<div style="height:100%;width:'+pct+'%;background:'+barColor+';border-radius:4px;transition:width .5s"></div>'+
+      '</div>'+
+      '<div style="font-size:.6rem;color:var(--muted);font-family:var(--mono);text-align:right">'+
+        (pct>=100?'✅ Objetivo conseguido':'Faltan €'+fmt(restante)+' ('+pct+'%)')+
+      '</div>';
+  }
 }
 
 function stat(label,val,sub,ac,cls){
@@ -1034,6 +1098,14 @@ function delViaje(id){
 // AJUSTES
 // ════════════════════════════════════════════════
 function renderAjustes(){
+  // Sliders
+  var corte = getCorteDia();
+  var obj   = getObjetivo();
+  var sc=document.getElementById('sldCorte'),lc=document.getElementById('lblCorte');
+  var so=document.getElementById('sldObjetivo'),lo=document.getElementById('lblObjetivo');
+  if(sc){ sc.value=corte; lc.textContent=String(corte).padStart(2,'0')+':00h'; }
+  if(so){ so.value=obj;   lo.textContent='€'+obj; }
+
   // Almacenamiento
   var n=DB.viajes.length;
   var bytes=(localStorage.getItem(STORAGE_KEY)||'').length*2;
@@ -1064,6 +1136,17 @@ function renderAjustes(){
   } else {
     nEl.innerHTML='Te avisaremos 10 min antes de tus horas punta históricas.\n<br><span style="color:var(--muted);font-size:.65rem">Necesita mínimo 2 viajes por franja horaria.</span>';
   }
+}
+
+function updCorte(v){
+  localStorage.setItem('taxibook_corte', v);
+  document.getElementById('lblCorte').textContent = String(v).padStart(2,'0')+':00h';
+  renderQuick();
+}
+function updObjetivo(v){
+  localStorage.setItem('taxibook_objetivo', v);
+  document.getElementById('lblObjetivo').textContent = '€'+v;
+  renderQuick();
 }
 
 function desactivarNotif(){
@@ -1145,82 +1228,169 @@ function wazeClick(e, webUrl){
 // ════════════════════════════════════════════════
 var notifInterval = null;
 
+// ════════════════════════════════════════════════
+// NOTIFICACIONES — Service Worker en background
+// ════════════════════════════════════════════════
+var notifInterval = null;
+
 function calcHorasPunta(){
-  // Agrupa todos los viajes por hora y calcula media de ingresos
   var horas = {};
   DB.viajes.forEach(function(v){
-    if(!horas[v.hora]) horas[v.hora] = {n:0, t:0};
-    horas[v.hora].n++;
-    horas[v.hora].t += v.total;
+    if(!horas[v.hora]) horas[v.hora]={n:0,t:0};
+    horas[v.hora].n++; horas[v.hora].t+=v.total;
   });
-  // Devuelve array [{hora, prom, n}] ordenado por prom desc
   return Object.entries(horas).map(function(e){
-    return {hora:parseInt(e[0]), prom:e[1].t/e[1].n, n:e[1].n};
-  }).filter(function(h){ return h.n >= 2; }) // mínimo 2 viajes para ser fiable
-    .sort(function(a,b){ return b.prom - a.prom; });
+    return {hora:parseInt(e[0]),prom:e[1].t/e[1].n,n:e[1].n};
+  }).filter(function(h){ return h.n>=2; })
+    .sort(function(a,b){ return b.prom-a.prom; });
+}
+
+// El Service Worker se registra como blob — no necesita archivo separado
+var SW_CODE = `
+self.addEventListener('install', function(e){ self.skipWaiting(); });
+self.addEventListener('activate', function(e){ e.waitUntil(self.clients.claim()); });
+
+// Recibe mensaje con las horas punta y programa alarmas
+self.addEventListener('message', function(e){
+  if(e.data && e.data.type === 'SET_ALARMAS'){
+    self._alarmas = e.data.alarmas;   // [{hora, prom, n, diaSem, promDia}]
+    self._ultimaNotif = {};
+    // Iniciar comprobación cada minuto
+    if(self._intervalo) return; // ya corriendo
+    self._intervalo = setInterval(function(){
+      var ahora = new Date();
+      var h = ahora.getHours(), m = ahora.getMinutes();
+      if(m < 48 || m > 55) return;
+      var horaProx = (h+1)%24;
+      var alarmas = self._alarmas || [];
+      var top3 = alarmas.slice(0,3).map(function(a){ return a.hora; });
+      if(top3.indexOf(horaProx) === -1) return;
+      var match = alarmas.find(function(a){ return a.hora===horaProx; });
+      if(!match) return;
+      var key = ahora.toDateString()+'_'+horaProx;
+      if(self._ultimaNotif[key]) return;
+      self._ultimaNotif[key] = true;
+      var dias = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+      self.registration.showNotification('⚡ Hora punta en 10 min', {
+        body: 'Las '+String(horaProx).padStart(2,'0')+':00h — €'+match.prom.toFixed(2)+'/viaje histórico'+(match.n?' ('+match.n+'v)':''),
+        icon: 'https://marcosalc2.github.io/taxibook/icon.png',
+        badge: 'https://marcosalc2.github.io/taxibook/icon.png',
+        tag: 'taxibook-punta',
+        renotify: true,
+        requireInteraction: false
+      });
+    }, 60000);
+  }
+  if(e.data && e.data.type === 'STOP'){
+    if(self._intervalo){ clearInterval(self._intervalo); self._intervalo=null; }
+  }
+});
+
+self.addEventListener('notificationclick', function(e){
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({type:'window'}).then(function(cs){
+    if(cs.length){ cs[0].focus(); } else { self.clients.openWindow('/taxibook/'); }
+  }));
+});
+`;
+
+var swReg = null;
+
+async function registrarSW(){
+  if(!('serviceWorker' in navigator)) return null;
+  try{
+    // Crear blob URL con el código del SW
+    var blob = new Blob([SW_CODE], {type:'application/javascript'});
+    var blobUrl = URL.createObjectURL(blob);
+    var reg = await navigator.serviceWorker.register(blobUrl, {scope:'./'});
+    swReg = reg;
+    return reg;
+  }catch(e){
+    // Blob SW no permitido en algunos navegadores — fallback a intervalo en página
+    console.warn('SW blob no soportado, usando intervalo:', e.message);
+    return null;
+  }
+}
+
+function enviarAlarmasAlSW(){
+  if(!swReg || !swReg.active) return;
+  var alarmas = calcHorasPunta();
+  swReg.active.postMessage({type:'SET_ALARMAS', alarmas:alarmas});
+}
+
+// Fallback: intervalo en página (cuando SW no está disponible)
+function iniciarVigilanciaLocal(){
+  if(notifInterval) clearInterval(notifInterval);
+  var ultimaNotif={};
+  notifInterval = setInterval(function(){
+    if(trip) return;
+    var ahora=new Date(), h=ahora.getHours(), m=ahora.getMinutes();
+    if(m<48||m>55) return;
+    var horaProx=(h+1)%24;
+    var punta=calcHorasPunta();
+    var top3=punta.slice(0,3).map(function(x){return x.hora;});
+    if(top3.indexOf(horaProx)===-1) return;
+    var match=punta.find(function(x){return x.hora===horaProx;});
+    if(!match) return;
+    var key=ahora.toDateString()+'_'+horaProx;
+    if(ultimaNotif[key]) return;
+    ultimaNotif[key]=true;
+    var dias=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+    var dv=DB.viajes.filter(function(v){return v.diaSem===ahora.getDay()&&v.hora===horaProx;});
+    var prom=dv.length?dv.reduce(function(s,v){return s+v.total;},0)/dv.length:match.prom;
+    if(Notification.permission==='granted'){
+      try{
+        new Notification('⚡ Hora punta en 10 min',{
+          body:'Las '+String(horaProx).padStart(2,'0')+':00h — €'+prom.toFixed(2)+'/viaje'+(dv.length?' ('+dv.length+'v este '+dias[ahora.getDay()]+')':''),
+          tag:'taxibook-punta', renotify:true
+        });
+      }catch(err){}
+    }
+  }, 60000);
 }
 
 async function pedirPermisoNotif(){
   if(!('Notification' in window)){ toast('Este navegador no soporta notificaciones','#ffc107'); return; }
   var perm = await Notification.requestPermission();
-  if(perm === 'granted'){
-    toast('✅ Notificaciones activadas');
-    iniciarVigilancia();
+  if(perm==='granted'){
     localStorage.setItem('taxibook_notif','1');
+    await iniciarVigilancia();
+    toast('✅ Notificaciones activadas — recibirás avisos aunque Chrome esté en segundo plano');
   } else {
-    toast('⚠️ Permiso denegado — actívalo en ajustes del móvil','#ffc107');
+    toast('⚠️ Permiso denegado','#ffc107');
+  }
+  renderAjustes();
+}
+
+async function iniciarVigilancia(){
+  // Intentar SW primero (funciona en background)
+  var reg = await registrarSW();
+  if(reg){
+    // Esperar a que el SW esté activo
+    await new Promise(function(res){
+      if(reg.active){ res(); return; }
+      reg.addEventListener('updatefound', function(){
+        reg.installing.addEventListener('statechange', function(){
+          if(this.state==='activated') res();
+        });
+      });
+      setTimeout(res, 3000); // timeout de seguridad
+    });
+    enviarAlarmasAlSW();
+    toast('✅ SW activo — notificaciones en background','#00e096');
+  } else {
+    // Fallback: solo funciona con la app abierta
+    iniciarVigilanciaLocal();
+    toast('⚠️ Solo avisa con la app abierta','#ffc107');
   }
 }
 
-function enviarNotif(titulo, cuerpo){
-  if(Notification.permission !== 'granted') return;
-  try{
-    new Notification(titulo, {
-      body: cuerpo,
-      icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🚕</text></svg>',
-      badge: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🚕</text></svg>',
-      tag: 'taxibook-punta',
-      renotify: true
-    });
-  }catch(e){ console.warn('Notif error:',e); }
-}
-
-function iniciarVigilancia(){
-  if(notifInterval) clearInterval(notifInterval);
-  var ultimaNotif = {};
-  notifInterval = setInterval(function(){
-    // No avisar si hay viaje activo
-    if(trip) return;
-    var ahora = new Date();
-    var horaActual = ahora.getHours();
-    var minActual  = ahora.getMinutes();
-    // Solo avisar a :50 de cada hora (10 min antes de la siguiente)
-    if(minActual < 48 || minActual > 55) return;
-    // La hora punta que se avecina es horaActual+1
-    var horaProxima = (horaActual + 1) % 24;
-    var punta = calcHorasPunta();
-    var match = punta.find(function(h){ return h.hora === horaProxima; });
-    if(!match) return;
-    // Solo si es top 3 horas punta
-    var top3 = punta.slice(0,3).map(function(h){ return h.hora; });
-    if(top3.indexOf(horaProxima) === -1) return;
-    // No repetir la misma notif en la misma hora
-    var key = ahora.toDateString() + '_' + horaProxima;
-    if(ultimaNotif[key]) return;
-    ultimaNotif[key] = true;
-    // Solo avisar si esa hora tiene buen promedio (top del día de la semana también)
-    var diaSem = ahora.getDay();
-    var viajesDia = DB.viajes.filter(function(v){ return v.diaSem===diaSem && v.hora===horaProxima; });
-    var promDia = viajesDia.length
-      ? viajesDia.reduce(function(s,v){return s+v.total;},0) / viajesDia.length
-      : match.prom;
-    enviarNotif(
-      '⚡ Hora punta en 10 min',
-      'Las ' + String(horaProxima).padStart(2,'0') + ':00h — histórico €' +
-      promDia.toFixed(2) + '/viaje' +
-      (viajesDia.length ? ' ('+viajesDia.length+'v este '+['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][diaSem]+')' : '')
-    );
-  }, 60000); // revisar cada minuto
+function desactivarNotif(){
+  if(notifInterval){ clearInterval(notifInterval); notifInterval=null; }
+  if(swReg && swReg.active) swReg.active.postMessage({type:'STOP'});
+  localStorage.removeItem('taxibook_notif');
+  toast('🔕 Avisos desactivados','#ffc107');
+  renderAjustes();
 }
 
 // ════════════════════════════════════════════════
@@ -1229,10 +1399,11 @@ function iniciarVigilancia(){
 renderQuick();
 setTimeout(function(){ loadSheets(false); }, 1500);
 
-// Reactivar vigilancia si el usuario ya había dado permiso
+// Reactivar si ya tenía permiso
 if(localStorage.getItem('taxibook_notif')==='1' && typeof Notification!=='undefined' && Notification.permission==='granted'){
   iniciarVigilancia();
 }
+
 </script>
 </body>
 </html>
