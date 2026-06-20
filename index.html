@@ -1123,7 +1123,7 @@ function renderAjustes(){
     nEl.innerHTML='<span style="color:var(--red)">Este navegador no soporta notificaciones.</span>';
     if(bEl) bEl.style.display='none';
   } else if(Notification.permission==='granted'){
-    var punta=calcHorasPunta();
+    var punta=calcHorasPunta().sort(function(a,b){ return a.hora-b.hora; }); // orden cronológico
     var puntaTxt=punta.length
       ? punta.map(function(h){
           return '<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border)">'+
@@ -1134,7 +1134,7 @@ function renderAjustes(){
         }).join('')
       : '<span style="color:var(--muted)">Añade más viajes para detectar patrones.</span>';
     nEl.innerHTML='<span style="color:var(--green)">✅ Activadas</span><br><br>'+
-      '<span style="color:var(--muted);font-size:.6rem;letter-spacing:1px">TODAS TUS HORAS CON DATOS:</span><br>'+
+      '<span style="color:var(--muted);font-size:.6rem;letter-spacing:1px">TODAS TUS HORAS CON DATOS (orden cronológico):</span><br>'+
       puntaTxt;
     if(bEl){ bEl.textContent='🔕 Desactivar avisos'; bEl.onclick=desactivarNotif; }
   } else if(Notification.permission==='denied'){
@@ -1270,10 +1270,8 @@ self.addEventListener('message', function(e){
       if(m < 48 || m > 55) return;
       var horaProx = (h+1)%24;
       var alarmas = self._alarmas || [];
-      var top3 = alarmas.slice(0,3).map(function(a){ return a.hora; });
-      if(top3.indexOf(horaProx) === -1) return;
       var match = alarmas.find(function(a){ return a.hora===horaProx; });
-      if(!match) return;
+      if(!match) return; // esa hora no tiene historial
       var key = ahora.toDateString()+'_'+horaProx;
       if(self._ultimaNotif[key]) return;
       self._ultimaNotif[key] = true;
@@ -1334,11 +1332,9 @@ function iniciarVigilanciaLocal(){
     var ahora=new Date(), h=ahora.getHours(), m=ahora.getMinutes();
     if(m<48||m>55) return;
     var horaProx=(h+1)%24;
-    var punta=calcHorasPunta();
-    var top3=punta.slice(0,3).map(function(x){return x.hora;});
-    if(top3.indexOf(horaProx)===-1) return;
+    var punta=calcHorasPunta(); // todas las horas con >=2 viajes
     var match=punta.find(function(x){return x.hora===horaProx;});
-    if(!match) return;
+    if(!match) return; // esa hora no tiene historial suficiente
     var key=ahora.toDateString()+'_'+horaProx;
     if(ultimaNotif[key]) return;
     ultimaNotif[key]=true;
