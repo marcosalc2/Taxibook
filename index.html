@@ -165,13 +165,19 @@ select option{background:var(--s2)}
   <!-- Banner viaje activo -->
   <div class="banner" id="banner" style="display:none">
     <span style="font-size:1.3rem">🔴</span>
-    <div>
+    <div style="flex:1;min-width:0">
       <div style="font-size:.6rem;color:var(--muted);margin-bottom:4px">VIAJE EN CURSO</div>
       <div class="banner-timers">
         <div class="timer-block"><label>Tiempo</label><div class="timer-val" id="timerEl">00:00</div></div>
         <div class="timer-block"><label>Distancia</label><div class="timer-val dist" id="distEl">0 m</div></div>
       </div>
-      <div id="bannerLoc" style="font-size:.6rem;color:var(--muted);font-family:var(--mono);margin-top:3px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+      <div id="bannerLoc" style="font-size:.6rem;color:var(--muted);font-family:var(--mono);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+      <!-- Recomendación en tiempo real -->
+      <div id="bannerRec" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,69,96,.2)">
+        <div style="font-size:.55rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">🤖 Próxima zona sugerida</div>
+        <div id="bannerRecContent" style="font-size:.72rem;color:var(--text);line-height:1.5"></div>
+        <div id="bannerRecTime" style="font-size:.55rem;color:var(--muted);font-family:var(--mono);margin-top:3px"></div>
+      </div>
     </div>
   </div>
 
@@ -296,7 +302,7 @@ select option{background:var(--s2)}
   <div class="card">
     <div class="ct">Jornada y objetivo</div>
 
-    <div class="fg" style="margin-bottom:12px">
+    <div class="fg" style="margin-bottom:14px">
       <label>Hora de inicio de jornada</label>
       <div style="display:flex;align-items:center;gap:10px">
         <input type="range" id="sldCorte" min="0" max="8" step="1"
@@ -307,14 +313,26 @@ select option{background:var(--s2)}
       <div style="font-size:.6rem;color:var(--muted);margin-top:3px">Viajes antes de esta hora se asignan al día anterior</div>
     </div>
 
-    <div class="fg">
-      <label>Objetivo diario de ingresos (€)</label>
+    <div class="fg" style="margin-bottom:14px">
+      <label>Días trabajados por semana</label>
       <div style="display:flex;align-items:center;gap:10px">
-        <input type="range" id="sldObjetivo" min="50" max="500" step="10"
+        <input type="range" id="sldDias" min="1" max="7" step="1"
+          style="flex:1;background:none;border:none;padding:4px 0;accent-color:var(--purple)"
+          oninput="updDias(this.value)">
+        <span id="lblDias" style="font-family:var(--mono);font-size:.9rem;color:var(--purple);min-width:45px;text-align:right"></span>
+      </div>
+      <div style="font-size:.6rem;color:var(--muted);margin-top:3px">Para calcular el promedio por día trabajado</div>
+    </div>
+
+    <div class="fg" style="margin-bottom:14px">
+      <label>Objetivo semanal (€)</label>
+      <div style="display:flex;align-items:center;gap:10px">
+        <input type="range" id="sldObjetivo" min="200" max="3000" step="50"
           style="flex:1;background:none;border:none;padding:4px 0;accent-color:var(--green)"
           oninput="updObjetivo(this.value)">
-        <span id="lblObjetivo" style="font-family:var(--mono);font-size:.9rem;color:var(--green);min-width:55px;text-align:right"></span>
+        <span id="lblObjetivo" style="font-family:var(--mono);font-size:.9rem;color:var(--green);min-width:65px;text-align:right"></span>
       </div>
+      <div style="font-size:.6rem;color:var(--muted);margin-top:3px">Umbral verde: ≥objetivo/días×días_trabajados · Rojo: &lt;80%</div>
     </div>
   </div>
 
@@ -503,7 +521,7 @@ async function reverseGeo(lat,lng){
 // ════════════════════════════════════════════════
 // ESTADO DEL VIAJE
 // ════════════════════════════════════════════════
-var trip=null, timerInt=null, watchId=null, pago='efectivo', plat='Cabify';
+var trip=null, timerInt=null, watchId=null, recInt=null, pago='efectivo', plat='Cabify';
 
 async function startTrip(){
   var btn=document.getElementById('btnStart');
@@ -528,6 +546,11 @@ async function startTrip(){
   document.getElementById('bannerLoc').textContent=lat?addr.slice(0,40):'Sin GPS';
   btn.disabled=false; btn.textContent='🚦 Iniciar Viaje';
   timerInt=setInterval(tickTimer,1000);
+
+  // Recomendación en tiempo real cada 5 min
+  recInt=setInterval(function(){ actualizarRecEnViaje(); }, 5*60*1000);
+  // Primera recomendación a los 30 segundos de iniciar
+  setTimeout(function(){ if(trip) actualizarRecEnViaje(); }, 30000);
   if(navigator.geolocation && lat!==null){
     var lastRev=0;
     watchId=navigator.geolocation.watchPosition(function(p){
@@ -602,8 +625,91 @@ function cancelTrip(){
   resetTrip(); toast('Viaje cancelado','#ffc107');
 }
 
+// ════════════════════════════════════════════════
+// RECOMENDACIÓN EN TIEMPO REAL (durante el viaje)
+// ════════════════════════════════════════════════
+async function actualizarRecEnViaje(){
+  if(!trip) return;
+  var brEl=document.getElementById('bannerRec');
+  var bcEl=document.getElementById('bannerRecContent');
+  var btEl=document.getElementById('bannerRecTime');
+  if(!brEl||!bcEl) return;
+
+  // Posición actual — usar la del watchPosition si está disponible
+  var miLat = trip.lastLat || trip.lat;
+  var miLng = trip.lastLng || trip.lng;
+  if(!miLat){ brEl.style.display='none'; return; }
+
+  var ahora = new Date(), hora = ahora.getHours();
+  var dias = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+
+  // Obtener datos combinados (local + Sheets en caché si ya se cargaron)
+  var todosViajes = DB.viajes.slice();
+
+  // Filtrar por franja horaria actual ±2h
+  var bloque = todosViajes.filter(function(v){
+    return Math.abs(v.hora - hora) <= 2;
+  });
+  if(bloque.length < 3) bloque = todosViajes.slice();
+
+  // Agrupar zonas con coordenadas
+  var zonas = {};
+  bloque.forEach(function(v){
+    var addr = v.startAddr || '';
+    if(!addr || !v.startLat) return;
+    var k = addr.split(',')[0].trim();
+    if(!k) return;
+    if(!zonas[k]) zonas[k]={n:0,t:0,lat:v.startLat,lng:v.startLng};
+    zonas[k].n++; zonas[k].t+=v.total;
+  });
+
+  if(!Object.keys(zonas).length){ brEl.style.display='none'; return; }
+
+  // Score: combina cercanía (40%) + ingresos (40%) + volumen (20%)
+  var maxProm = Math.max.apply(null, Object.values(zonas).map(function(z){return z.t/z.n;}));
+  var maxN    = Math.max.apply(null, Object.values(zonas).map(function(z){return z.n;}));
+
+  var lista = Object.entries(zonas).map(function(e){
+    var k=e[0], z=e[1];
+    var dist = haversine(miLat,miLng,z.lat,z.lng);
+    var prom = z.t/z.n;
+    // Normalizar cada factor 0-1
+    var sCercan = 1/(1+dist);           // más cerca = mejor
+    var sIngresos = prom/maxProm;        // más €/viaje = mejor
+    var sVolumen  = z.n/maxN;            // más viajes históricos = más fiable
+    var score = sCercan*0.4 + sIngresos*0.4 + sVolumen*0.2;
+    return {k:k, dist:dist, prom:prom, n:z.n, score:score, lat:z.lat, lng:z.lng};
+  }).sort(function(a,b){return b.score-a.score;});
+
+  var top3 = lista.slice(0,3);
+
+  // Construir texto del banner
+  var html = top3.map(function(z,i){
+    var ics=['🥇','🥈','🥉'];
+    var ds = z.dist<1 ? Math.round(z.dist*1000)+' m' : z.dist.toFixed(1)+' km';
+    var mapsUrl = z.lat
+      ? 'https://maps.google.com/maps?daddr='+z.lat+','+z.lng
+      : 'https://maps.google.com/maps?daddr='+encodeURIComponent(z.k+', Madrid');
+    return '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">'+
+      '<span>'+ics[i]+'</span>'+
+      '<div style="flex:1;min-width:0">'+
+        '<span style="font-weight:600;font-size:.72rem">'+z.k+'</span>'+
+        '<span style="color:var(--muted);font-size:.62rem;font-family:var(--mono)"> · €'+z.prom.toFixed(2)+'/v · '+ds+'</span>'+
+      '</div>'+
+      '<a href="'+mapsUrl+'" target="_blank" '+
+        'style="background:#1a2a4a;border:1px solid #4285f4;border-radius:6px;padding:2px 7px;'+
+        'text-decoration:none;font-size:.6rem;font-weight:700;color:#4285f4;white-space:nowrap">🗺️ Maps</a>'+
+    '</div>';
+  }).join('');
+
+  brEl.style.display='block';
+  bcEl.innerHTML=html;
+  if(btEl) btEl.textContent='Actualizado '+ahora.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})+' · '+bloque.length+'v analizados';
+}
+
 function resetTrip(){
   clearInterval(timerInt);
+  if(recInt!==null){ clearInterval(recInt); recInt=null; }
   if(watchId!==null){ navigator.geolocation.clearWatch(watchId); watchId=null; }
   trip=null;
   document.getElementById('stIdle').style.display='block';
@@ -611,6 +717,7 @@ function resetTrip(){
   document.getElementById('banner').style.display='none';
   document.getElementById('timerEl').textContent='00:00';
   document.getElementById('distEl').textContent='0 m';
+  var br=document.getElementById('bannerRec'); if(br) br.style.display='none';
   ['inpTotal','inpEfectivo','inpRuta','inpNota'].forEach(function(id){ var e=document.getElementById(id); if(e){e.value='';delete e.dataset.u;} });
   document.getElementById('cambioBox').style.display='none';
   document.querySelectorAll('.po').forEach(function(o){ o.classList.remove('sel'); });
@@ -832,12 +939,10 @@ async function showRec(viajeRecien){
 
   lista.forEach(function(z,i){
     var ds=z.dist!==null?(z.dist<1?Math.round(z.dist*1000)+' m':z.dist.toFixed(1)+' km'):null;
-    // URL de Waze — si tenemos coords exactas mejor, si no por nombre de calle
-    var wazeQ=encodeURIComponent(z.k+', Madrid');
-    var wazeUrl= z.lat
-      ? 'waze://?ll='+z.lat+','+z.lng+'&navigate=yes'
-      : 'waze://?q='+wazeQ+'&navigate=yes';
-    var wazeWeb='https://waze.com/ul?q='+wazeQ+'&navigate=yes';
+    // URL de Google Maps
+    var mapsUrl = z.lat
+      ? 'https://maps.google.com/maps?daddr='+z.lat+','+z.lng
+      : 'https://maps.google.com/maps?daddr='+encodeURIComponent(z.k+', Madrid');
     html+='<div class="rec-zone">'+
       '<span style="font-size:1rem;flex-shrink:0">'+ics[i]+'</span>'+
       '<div style="flex:1;min-width:0">'+
@@ -847,11 +952,11 @@ async function showRec(viajeRecien){
           (ds?'<span style="font-size:.65rem;color:var(--acc);font-family:var(--mono)">📍 '+ds+'</span>':'')+
         '</div>'+
       '</div>'+
-      '<a href="'+wazeUrl+'" onclick="wazeClick(event,\''+wazeWeb+'\')" '+
-        'style="flex-shrink:0;background:#1a3a2a;border:1px solid #00c853;border-radius:8px;padding:6px 10px;'+
-        'display:flex;align-items:center;gap:4px;text-decoration:none;cursor:pointer">'+
-        '<img src="https://www.waze.com/favicon.ico" style="width:16px;height:16px;border-radius:3px" onerror="this.style.display=\'none\'">'+
-        '<span style="font-size:.65rem;font-weight:700;color:#00c853;font-family:var(--font)">Waze</span>'+
+      '<a href="'+mapsUrl+'" target="_blank" '+
+        'style="flex-shrink:0;background:#1a2a4a;border:1px solid #4285f4;border-radius:8px;padding:6px 10px;'+
+        'display:flex;align-items:center;gap:4px;text-decoration:none">'+
+        '<span style="font-size:1rem">🗺️</span>'+
+        '<span style="font-size:.65rem;font-weight:700;color:#4285f4">Maps</span>'+
       '</a>'+
     '</div>';
   });
@@ -889,42 +994,67 @@ async function showRec(viajeRecien){
 // ════════════════════════════════════════════════
 // RENDER QUICK STATS
 // ════════════════════════════════════════════════
-function getObjetivo(){ return parseFloat(localStorage.getItem('taxibook_objetivo')||'150'); }
+function getObjetivo(){ return parseFloat(localStorage.getItem('taxibook_objetivo')||'1250'); }
+function getDiasSemana(){ return parseInt(localStorage.getItem('taxibook_dias')||'5'); }
 
 function renderQuick(){
   var t=today();
   var hoy=DB.viajes.filter(function(v){ return v.fecha===t; });
   var th=hoy.reduce(function(s,v){return s+v.total;},0);
   var eh=hoy.filter(function(v){return v.pago==='efectivo';}).reduce(function(s,v){return s+(v.efectivo||0);},0);
+
+  // Semana actual
   var sd=weekDays(getMon(t));
   var sem=DB.viajes.filter(function(v){return sd.indexOf(v.fecha)>=0;});
   var ts=sem.reduce(function(s,v){return s+v.total;},0);
-  var obj=getObjetivo();
-  var pct=Math.min(Math.round(th/obj*100),100);
-  var barColor=pct>=100?'var(--green)':pct>=70?'var(--yellow)':'var(--acc)';
-  var emoji=pct>=100?'🎯':pct>=70?'🔥':'⚡';
+
+  // Días trabajados esta semana (días con al menos 1 viaje)
+  var diasTrabajados=sd.filter(function(d){return DB.viajes.some(function(v){return v.fecha===d;});}).length;
+  var diasConfig=getDiasSemana();
+
+  // Promedio por día trabajado
+  var promDia=diasTrabajados>0?ts/diasTrabajados:0;
 
   document.getElementById('quickStats').innerHTML=
     stat('HOY','€'+fmt(th),hoy.length+' viajes','var(--green)','g')+
     stat('SEMANA','€'+fmt(ts),sem.length+' viajes','var(--acc)','b')+
     stat('EFECTIVO','€'+fmt(eh),'en caja','var(--yellow)','y')+
-    stat('PROM.','€'+(hoy.length?fmt(th/hoy.length):'0,00'),'por viaje','var(--purple)','p');
+    stat('PROM/DÍA','€'+fmt(promDia),diasTrabajados+' días trabajados','var(--purple)','p');
 
-  // Barra de objetivo
+  // ── Barra objetivo semanal ──
+  var obj=getObjetivo();
+  var pct=Math.min(Math.round(ts/obj*100),100);
+
+  // Objetivo proporcional al nº de días trabajados
+  var objProporcional=diasConfig>0?(obj/diasConfig)*diasTrabajados:obj;
+  var ratio=objProporcional>0?ts/objProporcional:0;
+
+  // Colores: verde ≥100% del proporcional, amarillo ≥80%, rojo <80%
+  var barColor=ratio>=1?'#00e096':ratio>=0.8?'#ffc107':'#ff4560';
+  var emoji=ratio>=1?'🎯':ratio>=0.8?'🔥':'⚠️';
+  var estado=ratio>=1?'✅ En objetivo':ratio>=0.8?'🔥 Cerca del objetivo':'⚠️ Por debajo del objetivo';
+
+  var restante=Math.max(obj-ts,0);
   var obEl=document.getElementById('objetivoBar');
   if(obEl){
-    var restante=Math.max(obj-th,0);
     obEl.innerHTML=
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
-        '<span style="font-size:.62rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted)">'+emoji+' Objetivo diario</span>'+
-        '<span style="font-family:var(--mono);font-size:.72rem;color:'+barColor+'">€'+fmt(th)+' / €'+fmt(obj)+'</span>'+
+        '<span style="font-size:.62rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted)">'+emoji+' Objetivo semanal</span>'+
+        '<span style="font-family:var(--mono);font-size:.72rem;color:'+barColor+'">€'+fmt(ts)+' / €'+fmt(obj)+'</span>'+
       '</div>'+
       '<div style="height:8px;background:var(--s3);border-radius:4px;overflow:hidden;margin-bottom:5px">'+
-        '<div style="height:100%;width:'+pct+'%;background:'+barColor+';border-radius:4px;transition:width .5s"></div>'+
+        '<div style="height:100%;width:'+pct+'%;background:'+barColor+';border-radius:4px;transition:width .6s"></div>'+
       '</div>'+
-      '<div style="font-size:.6rem;color:var(--muted);font-family:var(--mono);text-align:right">'+
-        (pct>=100?'✅ Objetivo conseguido':'Faltan €'+fmt(restante)+' ('+pct+'%)')+
-      '</div>';
+      '<div style="display:flex;justify-content:space-between;align-items:center">'+
+        '<span style="font-size:.6rem;color:'+barColor+';font-family:var(--mono);font-weight:700">'+estado+'</span>'+
+        '<span style="font-size:.6rem;color:var(--muted);font-family:var(--mono)">'+
+          (pct>=100?'🎯 Superado':'Faltan €'+fmt(restante))+
+        '</span>'+
+      '</div>'+
+      (diasTrabajados>0?
+        '<div style="font-size:.58rem;color:var(--muted);font-family:var(--mono);margin-top:4px;text-align:right">'+
+          'Ritmo: €'+fmt(promDia)+'/día · Objetivo/día: €'+fmt(obj/diasConfig)+
+        '</div>':'');
   }
 }
 
@@ -1060,17 +1190,16 @@ function tripCard(v){
   var dur=v.duracion?Math.floor(v.duracion/60)+'min':'';
   var dist=v.dist>0?(v.dist<1?Math.round(v.dist*1000)+'m':v.dist.toFixed(1)+'km'):'';
   var plat=v.plataforma?'<span style="font-size:.6rem;color:var(--yellow);font-family:var(--mono);margin-left:4px">'+v.plataforma+'</span>':'';
-  // Botón Waze si hay dirección de inicio
-  var wazeBtn='';
+  // Botón Google Maps si hay dirección de inicio
+  var mapsBtn='';
   if(v.startAddr&&v.startAddr!=='Sin GPS'){
-    var wazeQ=encodeURIComponent(v.startAddr+', Madrid');
-    var wazeUrl=v.startLat?'waze://?ll='+v.startLat+','+v.startLng+'&navigate=yes':'waze://?q='+wazeQ+'&navigate=yes';
-    var wazeWeb='https://waze.com/ul?q='+wazeQ+'&navigate=yes';
-    wazeBtn='<a href="'+wazeUrl+'" onclick="wazeClick(event,\''+wazeWeb+'\')" '+
-      'style="display:inline-flex;align-items:center;gap:3px;background:#1a3a2a;border:1px solid #00c853;'+
+    var mapsQ=encodeURIComponent(v.startAddr+', Madrid');
+    var mapsUrl=v.startLat?'https://maps.google.com/maps?daddr='+v.startLat+','+v.startLng:'https://maps.google.com/maps?daddr='+mapsQ;
+    mapsBtn='<a href="'+mapsUrl+'" target="_blank" '+
+      'style="display:inline-flex;align-items:center;gap:3px;background:#1a2a4a;border:1px solid #4285f4;'+
       'border-radius:6px;padding:3px 8px;text-decoration:none;margin-top:4px">'+
-      '<img src="https://www.waze.com/favicon.ico" style="width:13px;height:13px;border-radius:2px" onerror="this.style.display=\'none\'">'+
-      '<span style="font-size:.6rem;font-weight:700;color:#00c853">Waze</span></a>';
+      '<span style="font-size:11px">🗺️</span>'+
+      '<span style="font-size:.6rem;font-weight:700;color:#4285f4">Maps</span></a>';
   }
   return '<div class="ti" id="ti'+v.id+'">'+
     '<div class="tii '+cl[v.pago]+'">'+ic[v.pago]+'</div>'+
@@ -1080,7 +1209,7 @@ function tripCard(v){
       (v.pago==='efectivo'&&v.efectivo&&v.efectivo!==v.total?'<div class="ti-sub">Cobrado €'+fmt(v.efectivo)+' · Cambio €'+fmt(v.efectivo-v.total)+'</div>':'')+
       ((v.startAddr&&v.startAddr!=='Sin GPS')?'<div class="ti-loc">📍 '+v.startAddr+'</div>':'')+
       (v.nota?'<div class="ti-sub">💬 '+v.nota+'</div>':'')+
-      wazeBtn+
+      mapsBtn+
     '</div>'+
     '<button class="del-btn" onclick="delViaje(\''+v.id+'\')">🗑</button>'+
   '</div>';
@@ -1101,10 +1230,13 @@ function renderAjustes(){
   // Sliders
   var corte = getCorteDia();
   var obj   = getObjetivo();
+  var diasCfg=getDiasSemana();
   var sc=document.getElementById('sldCorte'),lc=document.getElementById('lblCorte');
+  var sd2=document.getElementById('sldDias'),ld=document.getElementById('lblDias');
   var so=document.getElementById('sldObjetivo'),lo=document.getElementById('lblObjetivo');
   if(sc){ sc.value=corte; lc.textContent=String(corte).padStart(2,'0')+':00h'; }
-  if(so){ so.value=obj;   lo.textContent='€'+obj; }
+  if(sd2){ sd2.value=diasCfg; ld.textContent=diasCfg+' día'+(diasCfg>1?'s':''); }
+  if(so){ so.value=obj; lo.textContent='€'+obj; }
 
   // Almacenamiento
   var n=DB.viajes.length;
@@ -1123,18 +1255,24 @@ function renderAjustes(){
     nEl.innerHTML='<span style="color:var(--red)">Este navegador no soporta notificaciones.</span>';
     if(bEl) bEl.style.display='none';
   } else if(Notification.permission==='granted'){
-    var punta=calcHorasPunta().sort(function(a,b){ return a.hora-b.hora; }); // orden cronológico
-    var puntaTxt=punta.length
-      ? punta.map(function(h){
-          return '<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border)">'+
-            '<span style="color:var(--acc)">'+String(h.hora).padStart(2,'0')+'h</span>'+
-            '<span style="color:var(--green);font-family:var(--mono)">€'+h.prom.toFixed(2)+'/v</span>'+
-            '<span style="color:var(--muted);font-family:var(--mono)">'+h.n+' viajes</span>'+
+    var todasHoras=calcHorasPunta().sort(function(a,b){ return a.hora-b.hora; });
+    var maxProm=todasHoras.length?Math.max.apply(null,todasHoras.map(function(h){return h.prom;})):1;
+    var puntaTxt=todasHoras.length
+      ? todasHoras.map(function(h){
+          var pct=Math.round(h.prom/maxProm*100);
+          var col=pct>=80?'var(--green)':pct>=50?'var(--yellow)':'var(--muted2)';
+          return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">'+
+            '<span style="font-family:var(--mono);font-size:.75rem;color:var(--acc);min-width:28px">'+String(h.hora).padStart(2,'0')+'h</span>'+
+            '<div style="flex:1;height:5px;background:var(--s3);border-radius:3px;overflow:hidden">'+
+              '<div style="height:100%;width:'+pct+'%;background:'+col+';border-radius:3px"></div>'+
+            '</div>'+
+            '<span style="font-family:var(--mono);font-size:.68rem;color:'+col+';min-width:58px;text-align:right">€'+h.prom.toFixed(2)+'/v</span>'+
+            '<span style="font-family:var(--mono);font-size:.62rem;color:var(--muted);min-width:45px;text-align:right">'+h.n+'v</span>'+
           '</div>';
         }).join('')
       : '<span style="color:var(--muted)">Añade más viajes para detectar patrones.</span>';
     nEl.innerHTML='<span style="color:var(--green)">✅ Activadas</span><br><br>'+
-      '<span style="color:var(--muted);font-size:.6rem;letter-spacing:1px">TODAS TUS HORAS CON DATOS (orden cronológico):</span><br>'+
+      '<span style="color:var(--muted);font-size:.6rem;letter-spacing:1px">JORNADA COMPLETA — verde=mejor hora:</span><br><br>'+
       puntaTxt;
     if(bEl){ bEl.textContent='🔕 Desactivar avisos'; bEl.onclick=desactivarNotif; }
   } else if(Notification.permission==='denied'){
@@ -1148,6 +1286,11 @@ function renderAjustes(){
 function updCorte(v){
   localStorage.setItem('taxibook_corte', v);
   document.getElementById('lblCorte').textContent = String(v).padStart(2,'0')+':00h';
+  renderQuick();
+}
+function updDias(v){
+  localStorage.setItem('taxibook_dias', v);
+  document.getElementById('lblDias').textContent = v+' día'+(v>1?'s':'');
   renderQuick();
 }
 function updObjetivo(v){
@@ -1222,12 +1365,10 @@ function toast(msg,bg){
 }
 
 // ════════════════════════════════════════════════
-// WAZE
+
 // ════════════════════════════════════════════════
-function wazeClick(e, webUrl){
-  // Intenta abrir la app. Si en 1.5s no abrió, abre la web
-  var t=setTimeout(function(){ window.open(webUrl,'_blank'); },1500);
-  window.addEventListener('blur',function(){ clearTimeout(t); },{once:true});
+function gmapsClick(url){
+  window.open(url,'_blank');
 }
 
 // ════════════════════════════════════════════════
@@ -1326,30 +1467,41 @@ function enviarAlarmasAlSW(){
 // Fallback: intervalo en página (cuando SW no está disponible)
 function iniciarVigilanciaLocal(){
   if(notifInterval) clearInterval(notifInterval);
-  var ultimaNotif={};
-  notifInterval = setInterval(function(){
-    if(trip) return;
+  var ultimaNotif = JSON.parse(localStorage.getItem('taxibook_ultimaNotif')||'{}');
+
+  function comprobar(){
+    if(Notification.permission !== 'granted') return;
     var ahora=new Date(), h=ahora.getHours(), m=ahora.getMinutes();
-    if(m<48||m>55) return;
+    // Avisar entre minuto :48 y :59 (10 min antes de la hora siguiente)
+    if(m < 48) return;
     var horaProx=(h+1)%24;
-    var punta=calcHorasPunta(); // todas las horas con >=2 viajes
+    var punta=calcHorasPunta();
     var match=punta.find(function(x){return x.hora===horaProx;});
-    if(!match) return; // esa hora no tiene historial suficiente
+    if(!match) return;
     var key=ahora.toDateString()+'_'+horaProx;
     if(ultimaNotif[key]) return;
     ultimaNotif[key]=true;
+    // Limpiar claves viejas para no crecer indefinidamente
+    var hoy=ahora.toDateString();
+    Object.keys(ultimaNotif).forEach(function(k){ if(k.indexOf(hoy)===-1) delete ultimaNotif[k]; });
+    localStorage.setItem('taxibook_ultimaNotif', JSON.stringify(ultimaNotif));
     var dias=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
     var dv=DB.viajes.filter(function(v){return v.diaSem===ahora.getDay()&&v.hora===horaProx;});
     var prom=dv.length?dv.reduce(function(s,v){return s+v.total;},0)/dv.length:match.prom;
-    if(Notification.permission==='granted'){
-      try{
-        new Notification('⚡ Hora punta en 10 min',{
-          body:'Las '+String(horaProx).padStart(2,'0')+':00h — €'+prom.toFixed(2)+'/viaje'+(dv.length?' ('+dv.length+'v este '+dias[ahora.getDay()]+')':''),
-          tag:'taxibook-punta', renotify:true
-        });
-      }catch(err){}
-    }
-  }, 60000);
+    try{
+      new Notification('⚡ Hora punta en 10 min',{
+        body:'Las '+String(horaProx).padStart(2,'0')+':00h — €'+prom.toFixed(2)+'/viaje'+(dv.length?' ('+dv.length+'v este '+dias[ahora.getDay()]+')':''),
+        tag:'taxibook-punta', renotify:true, requireInteraction:false
+      });
+    }catch(err){ console.warn('Notif error:',err); }
+  }
+
+  // Comprobar cada 30 segundos — funciona en multipantalla
+  notifInterval = setInterval(comprobar, 30000);
+  // También comprobar al volver a la app (cambio de pantalla activa)
+  document.addEventListener('visibilitychange', comprobar);
+  // Comprobar ahora mismo por si acaso
+  setTimeout(comprobar, 500);
 }
 
 async function pedirPermisoNotif(){
@@ -1357,41 +1509,23 @@ async function pedirPermisoNotif(){
   var perm = await Notification.requestPermission();
   if(perm==='granted'){
     localStorage.setItem('taxibook_notif','1');
-    await iniciarVigilancia();
-    toast('✅ Notificaciones activadas — recibirás avisos aunque Chrome esté en segundo plano');
+    iniciarVigilanciaLocal();
+    toast('✅ Notificaciones activadas');
   } else {
-    toast('⚠️ Permiso denegado','#ffc107');
+    toast('⚠️ Permiso denegado — actívalo en Ajustes del móvil → Chrome → Notificaciones','#ffc107');
   }
   renderAjustes();
 }
 
 async function iniciarVigilancia(){
-  // Intentar SW primero (funciona en background)
-  var reg = await registrarSW();
-  if(reg){
-    // Esperar a que el SW esté activo
-    await new Promise(function(res){
-      if(reg.active){ res(); return; }
-      reg.addEventListener('updatefound', function(){
-        reg.installing.addEventListener('statechange', function(){
-          if(this.state==='activated') res();
-        });
-      });
-      setTimeout(res, 3000); // timeout de seguridad
-    });
-    enviarAlarmasAlSW();
-    toast('✅ SW activo — notificaciones en background','#00e096');
-  } else {
-    // Fallback: solo funciona con la app abierta
-    iniciarVigilanciaLocal();
-    toast('⚠️ Solo avisa con la app abierta','#ffc107');
-  }
+  iniciarVigilanciaLocal();
 }
 
 function desactivarNotif(){
   if(notifInterval){ clearInterval(notifInterval); notifInterval=null; }
-  if(swReg && swReg.active) swReg.active.postMessage({type:'STOP'});
+  document.removeEventListener('visibilitychange', arguments.callee);
   localStorage.removeItem('taxibook_notif');
+  localStorage.removeItem('taxibook_ultimaNotif');
   toast('🔕 Avisos desactivados','#ffc107');
   renderAjustes();
 }
