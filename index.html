@@ -261,6 +261,7 @@ select option{background:var(--s2)}
 <!-- ══ SEMANA ══════════════════════════════════ -->
 <div class="sec" id="sec-semana">
   <div class="sg" id="semStats"></div>
+  <div class="card" id="semComparativa"></div>
   <div class="card"><div class="ct">Por día</div><div id="semDias"></div></div>
   <div class="card"><div class="ct">Por método de pago</div><div id="semPagos"></div></div>
   <div class="card"><div class="ct">Por plataforma</div><div id="semPlat"></div></div>
@@ -1106,6 +1107,63 @@ function renderSemana(){
     stat('EFECTIVO','€'+fmt(ef),'en caja','var(--yellow)','y')+
     stat('MEDIA/DÍA','€'+fmt(worked?total/worked:0),'','var(--acc)','b')+
     stat('VIAJES',sv.length,(worked||0)+' días trabajados','var(--purple)','p');
+
+  // ── Comparativa semanas anteriores ──────────────────────────
+  var compEl = document.getElementById('semComparativa');
+  var semanas = [];
+  for(var s=1; s<=4; s++){
+    var prevMon = new Date(mon);
+    prevMon.setDate(prevMon.getDate() - s*7);
+    var prevMonStr = prevMon.toISOString().slice(0,10);
+    var prevDias = weekDays(prevMonStr);
+    var prevV = DB.viajes.filter(function(v){ return prevDias.indexOf(v.fecha)>=0; });
+    var prevTotal = prevV.reduce(function(acc,v){ return acc+v.total; },0);
+    var prevWorked = prevDias.filter(function(d){ return DB.viajes.some(function(v){ return v.fecha===d; }); }).length;
+    var label = s===1?'Sem anterior':s===2?'Hace 2 sem':s===3?'Hace 3 sem':'Hace 4 sem';
+    var dateRange = new Date(prevMonStr).toLocaleDateString('es-ES',{day:'numeric',month:'short'});
+    semanas.push({label:label,date:dateRange,total:prevTotal,n:prevV.length,worked:prevWorked});
+  }
+  var maxComp = Math.max.apply(null, semanas.map(function(s){return s.total;}).concat([total,1]));
+  var diff1 = semanas[0].total > 0 ? Math.round((total-semanas[0].total)/semanas[0].total*100) : null;
+  var diffColor = diff1===null?'var(--muted)':diff1>=0?'var(--green)':'var(--red)';
+  var diffTxt = diff1===null?'sin datos':(diff1>=0?'+':'')+diff1+'% vs sem anterior';
+
+  compEl.innerHTML =
+    '<div class="ct">Comparativa semanas</div>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
+      '<div>'+
+        '<div style="font-size:.7rem;font-weight:600">Esta semana</div>'+
+        '<div style="font-family:var(--mono);font-size:1.1rem;color:var(--green)">€'+fmt(total)+'</div>'+
+        '<div style="font-size:.6rem;color:var(--muted);font-family:var(--mono)">'+sv.length+'v · '+worked+'d</div>'+
+      '</div>'+
+      '<div style="text-align:right">'+
+        '<div style="font-family:var(--mono);font-size:.85rem;color:'+diffColor+';font-weight:700">'+diffTxt+'</div>'+
+      '</div>'+
+    '</div>'+
+    // Barra semana actual
+    '<div style="margin-bottom:10px">'+
+      '<div style="display:flex;justify-content:space-between;font-size:.6rem;color:var(--muted);margin-bottom:3px"><span>Esta semana</span><span style="color:var(--green);font-weight:700">€'+fmt(total)+'</span></div>'+
+      '<div style="height:8px;background:var(--s3);border-radius:4px;overflow:hidden">'+
+        '<div style="height:100%;width:'+(total/maxComp*100).toFixed(0)+'%;background:var(--green);border-radius:4px"></div>'+
+      '</div>'+
+    '</div>'+
+    semanas.map(function(s,i){
+      var pct = maxComp>0?(s.total/maxComp*100).toFixed(0):0;
+      var col = i===0?'var(--acc)':i===1?'var(--purple)':'var(--muted)';
+      var diff = total>0&&s.total>0?Math.round((s.total-total)/total*100):null;
+      var dStr = diff!==null?'<span style="color:'+(diff>=0?'var(--green)':'var(--red)')+'"> ('+(diff>=0?'+':'')+diff+'%)</span>':'';
+      return '<div style="margin-bottom:8px">'+
+        '<div style="display:flex;justify-content:space-between;font-size:.6rem;color:var(--muted);margin-bottom:3px">'+
+          '<span>'+s.label+' <span style="color:var(--muted);font-size:.55rem">('+s.date+')</span></span>'+
+          '<span style="font-family:var(--mono);color:'+col+'">€'+fmt(s.total)+dStr+'</span>'+
+        '</div>'+
+        '<div style="height:6px;background:var(--s3);border-radius:3px;overflow:hidden">'+
+          '<div style="height:100%;width:'+pct+'%;background:'+col+';border-radius:3px;opacity:.7"></div>'+
+        '</div>'+
+        '<div style="font-size:.55rem;color:var(--muted);font-family:var(--mono);text-align:right;margin-top:1px">'+s.n+'v · '+s.worked+'d trabajados</div>'+
+      '</div>';
+    }).join('');
+
   var dt=dias.map(function(d,i){ var dv=DB.viajes.filter(function(v){return v.fecha===d;}); return {name:NAMES[i],t:dv.reduce(function(s,v){return s+v.total;},0),n:dv.length}; });
   var mx=Math.max.apply(null,dt.map(function(d){return d.t;}).concat([1]));
   var cols=['#00e5ff','#00b4cc','#00e096','#ffc107','#ff4560','#a855f7','#60a5fa'];
