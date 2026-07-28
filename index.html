@@ -136,9 +136,98 @@ select option{background:var(--s2)}
 .stor-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--green),var(--acc));transition:width .4s}
 .stor-fill.warn{background:linear-gradient(90deg,var(--yellow),#ff9800)}
 .stor-fill.crit{background:linear-gradient(90deg,var(--red),#ff6b35)}
+/* JORNADA — OVERLAYS */
+.gate-overlay{position:fixed;inset:0;z-index:5000;background:var(--bg);display:none;flex-direction:column;overflow-y:auto;padding:18px}
+.gate-step{background:var(--s2);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:12px}
+.gate-step-num{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--acc);color:#000;font-size:.65rem;font-weight:800;margin-right:7px}
+.gate-title{font-size:1.05rem;font-weight:800;margin-bottom:4px}
+.gate-sub{font-size:.72rem;color:var(--muted2);margin-bottom:16px;line-height:1.5}
+.gate-instructions{font-size:.72rem;color:var(--muted2);line-height:1.8;margin-bottom:12px}
+.gate-instructions b{color:var(--text)}
+.gate-filebtn{display:block;width:100%;padding:12px;background:var(--s3);border:1px dashed var(--border2);border-radius:10px;color:var(--acc);font-family:var(--font);font-size:.82rem;font-weight:700;text-align:center;cursor:pointer}
+.gate-status{font-size:.72rem;font-family:var(--mono);margin-top:8px;padding:8px 10px;border-radius:8px;display:none}
+.gate-status.ok{display:block;background:rgba(0,224,150,.1);color:var(--green);border:1px solid rgba(0,224,150,.25)}
+.gate-status.err{display:block;background:rgba(255,69,96,.1);color:var(--red);border:1px solid rgba(255,69,96,.25)}
+.jornada-banner{background:linear-gradient(135deg,rgba(0,224,150,.14),rgba(0,224,150,.04));border:1px solid rgba(0,224,150,.3);border-radius:var(--r);padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px}
+.jornada-banner .jb-info{flex:1;min-width:0}
+.jornada-banner .jb-lbl{font-size:.56rem;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+.jornada-banner .jb-val{font-family:var(--mono);font-size:.9rem;color:var(--green);font-weight:600}
+.btn-fin{padding:9px 12px;background:rgba(255,69,96,.12);border:1px solid rgba(255,69,96,.35);border-radius:9px;color:var(--red);font-family:var(--font);font-size:.72rem;font-weight:700;cursor:pointer;white-space:nowrap}
+.checklist-item{display:flex;align-items:flex-start;gap:10px;padding:11px 0;border-bottom:1px solid var(--border)}
+.checklist-item:last-child{border:none}
+.checklist-item input[type=checkbox]{width:19px;height:19px;flex-shrink:0;accent-color:var(--acc);margin-top:1px}
+.checklist-item label{font-size:.8rem;line-height:1.4;color:var(--text)}
+.resumen-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}
+.resumen-item{background:var(--s3);border:1px solid var(--border);border-radius:10px;padding:11px}
+.resumen-item .rl{font-size:.56rem;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.resumen-item .rv{font-family:var(--mono);font-size:1.15rem;font-weight:600}
+/* LLUVIA / AVISOS */
+.rain-banner{background:linear-gradient(135deg,rgba(0,180,255,.18),rgba(0,180,255,.05));border-bottom:1px solid rgba(0,180,255,.35);padding:9px 16px;font-size:.74rem;color:#7ec8ff;display:flex;align-items:center;gap:8px}
+.gate-events{background:rgba(255,193,7,.08);border:1px solid rgba(255,193,7,.3);border-radius:10px;padding:11px;margin-bottom:12px;font-size:.72rem;line-height:1.6;color:var(--text)}
+.gate-events b{color:var(--yellow)}
+.gate-events a{color:var(--acc)}
 </style>
 </head>
 <body>
+
+<!-- ══ OVERLAY: PUERTA DE ENTRADA (import CSV + iniciar jornada) ══ -->
+<div class="gate-overlay" id="gateOverlay">
+  <div style="text-align:center;margin-bottom:6px;font-size:2rem">🚕</div>
+  <div class="gate-title" style="text-align:center">Inicia tu jornada</div>
+  <div class="gate-sub" style="text-align:center">Antes de operar, importa tu CSV y confirma el inicio.</div>
+
+  <div class="gate-step">
+    <div style="margin-bottom:8px"><span class="gate-step-num">1</span><b style="font-size:.82rem">Importar CSV</b></div>
+    <div class="gate-instructions">
+      Cómo hacerlo:<br>
+      • Usa el CSV que ya exportaste antes (Ajustes → 📤 CSV), o el mismo formato.<br>
+      • Pulsa el botón de abajo y selecciona el archivo <b>.csv</b>.<br>
+      • Se importarán los viajes que aún no tengas guardados en este dispositivo.
+    </div>
+    <input type="file" id="gateCsvFile" accept=".csv,text/csv,text/comma-separated-values,text/plain,application/vnd.ms-excel,*/*" style="display:none" onchange="handleGateCSV(event)">
+    <label class="gate-filebtn" for="gateCsvFile">📄 Seleccionar archivo CSV</label>
+    <div class="gate-status" id="gateCsvStatus"></div>
+  </div>
+
+  <div class="gate-step">
+    <div style="margin-bottom:8px"><span class="gate-step-num">2</span><b style="font-size:.82rem">Iniciar jornada</b></div>
+    <div class="gate-instructions">Se registrará la hora de inicio para calcular tu resumen del día.</div>
+    <div class="gate-events" id="gateEventos" style="display:none"></div>
+    <button class="btn-start" id="btnIniciarJornada" onclick="iniciarJornadaConfirm()" disabled>🚦 Iniciar Jornada</button>
+  </div>
+</div>
+
+<!-- ══ OVERLAY: FIN DE JORNADA (hoja de ruta + resumen) ══ -->
+<div class="gate-overlay" id="finOverlay">
+  <div id="finChecklistView">
+    <div style="text-align:center;margin-bottom:6px;font-size:2rem">🏁</div>
+    <div class="gate-title" style="text-align:center">Fin de jornada</div>
+    <div class="gate-sub" style="text-align:center">Completa estos pasos antes de ver tu resumen del día.</div>
+
+    <div class="gate-step">
+      <div style="margin-bottom:8px"><b style="font-size:.82rem">Hoja de ruta</b></div>
+      <button class="btn-sec" style="width:100%;padding:12px;margin-bottom:12px" onclick="exportCSV()">📤 Exportar a CSV (hoja de cálculo)</button>
+      <div class="checklist-item">
+        <input type="checkbox" id="chkExportado" onchange="updFinBtn()">
+        <label for="chkExportado">He exportado los datos de hoy a la hoja de cálculo (CSV)</label>
+      </div>
+      <div class="checklist-item">
+        <input type="checkbox" id="chkGmail" onchange="updFinBtn()">
+        <label for="chkGmail">He guardado el archivo exportado en Gmail (adjunto/enviado)</label>
+      </div>
+    </div>
+
+    <button class="btn-start" id="btnVerResumen" onclick="verResumenDia()" disabled>📊 Ver resumen del día</button>
+  </div>
+
+  <div id="finResumenView" style="display:none">
+    <div style="text-align:center;margin-bottom:6px;font-size:2rem">📊</div>
+    <div class="gate-title" style="text-align:center">Resumen del día</div>
+    <div class="gate-sub" style="text-align:center" id="resumenFecha"></div>
+    <div class="resumen-grid" id="resumenGrid"></div>
+    <button class="btn-start" onclick="finalizarJornada()">✅ Finalizar jornada</button>
+  </div>
+</div>
 
 <div class="topbar">
   <div class="logo">
@@ -147,6 +236,8 @@ select option{background:var(--s2)}
   </div>
   <div class="week-badge" id="weekBadge"></div>
 </div>
+
+<div class="rain-banner" id="rainBanner" style="display:none"></div>
 
 <div class="nav">
   <button class="nav-btn active" onclick="nav('viaje',this)"><span class="ni">🚗</span>Viaje</button>
@@ -161,6 +252,15 @@ select option{background:var(--s2)}
 
 <!-- ══ VIAJE ══════════════════════════════════ -->
 <div class="sec active" id="sec-viaje">
+
+  <!-- Banner jornada activa -->
+  <div class="jornada-banner" id="jornadaBanner" style="display:none">
+    <div class="jb-info">
+      <div class="jb-lbl">Jornada iniciada</div>
+      <div class="jb-val" id="jbHora">--:--</div>
+    </div>
+    <button class="btn-fin" onclick="finJornadaClick()">🏁 Fin de jornada</button>
+  </div>
 
   <!-- Banner viaje activo -->
   <div class="banner" id="banner" style="display:none">
@@ -363,13 +463,6 @@ select option{background:var(--s2)}
     <button class="btn-sec" style="width:100%;padding:12px" onclick="document.getElementById('importFile').click()">📥 Importar JSON</button>
   </div>
 
-  <div class="card">
-    <div class="ct">Google Sheets</div>
-    <div id="sheetsStatus" style="font-size:.7rem;font-family:var(--mono);color:var(--green);margin-bottom:6px">⏳ Conectando...</div>
-    <div id="sheetsInfo" style="font-size:.62rem;font-family:var(--mono);color:var(--muted);margin-bottom:8px"></div>
-    <div id="sheetsDebug" style="font-size:.58rem;font-family:var(--mono);color:var(--yellow);background:var(--s3);border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:8px;word-break:break-all;line-height:1.5;display:none"></div>
-    <button class="btn-sec" style="width:100%;padding:10px" onclick="loadSheets(true)">🔄 Sincronizar ahora</button>
-  </div>
 
 </div><!-- /ajustes -->
 
@@ -380,8 +473,6 @@ select option{background:var(--s2)}
 // CONFIG
 // ════════════════════════════════════════════════
 var STORAGE_KEY = 'taxibookpro2';
-var SHEETS_URL  = 'https://script.google.com/macros/s/AKfycbzXaOvPuH8yhpMQLC_8Bqz0Dc5SixsTkB5nNp6nUbLsBmqhfcrGanemShQFu2-KjSWQ/exec';
-// Columnas exactas de la hoja: ID | Fecha | Hora | DiaSem | Pago | Total | Lat | Lng | Direccion
 
 // ════════════════════════════════════════════════
 // BASE DE DATOS LOCAL — con IndexedDB de respaldo
@@ -525,6 +616,8 @@ async function reverseGeo(lat,lng){
 var trip=null, timerInt=null, watchId=null, recInt=null, pago='efectivo', plat='Cabify';
 
 async function startTrip(){
+  var j=loadJornada();
+  if(!j || !j.activa || j.fecha!==today()){ toast('⚠️ Inicia la jornada primero','#ff4560'); checkJornadaGate(); return; }
   var btn=document.getElementById('btnStart');
   btn.disabled=true; btn.textContent='⏳ Obteniendo GPS...';
   document.getElementById('gpsDot').className='dot spin';
@@ -613,7 +706,6 @@ async function saveTrip(){
   };
   DB.viajes.push(v);
   if(!saveDB()){ DB.viajes.pop(); btn.disabled=false; btn.textContent='✅ Guardar Viaje'; return; }
-  postSheets(v);
   var vc=JSON.parse(JSON.stringify(v));
   resetTrip();
   toast('✅ Viaje guardado — €'+fmt(total));
@@ -644,7 +736,7 @@ async function actualizarRecEnViaje(){
   var ahora = new Date(), hora = ahora.getHours();
   var dias = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
 
-  // Obtener datos combinados (local + Sheets en caché si ya se cargaron)
+  // Usar los datos guardados localmente en este dispositivo
   var todosViajes = DB.viajes.slice();
 
   // Filtrar por franja horaria actual ±2h
@@ -685,8 +777,11 @@ async function actualizarRecEnViaje(){
   var top3 = lista.slice(0,3);
 
   // Construir texto del banner
-  var html = top3.map(function(z,i){
-    var ics=['🥇','🥈','🥉'];
+  var top=top3[0];
+  var fraseTop = await fraseZonaHumana(top);
+  var html = '<div style="margin-bottom:6px">🤖 Según mi histórico, te recomiendo <b>'+fraseTop+'</b> · €'+top.prom.toFixed(2)+'/v</div>' +
+    top3.slice(1).map(function(z,i){
+    var ics=['🥈','🥉'];
     var ds = z.dist<1 ? Math.round(z.dist*1000)+' m' : z.dist.toFixed(1)+' km';
     var mapsUrl = z.lat
       ? 'https://maps.google.com/maps?daddr='+z.lat+','+z.lng
@@ -734,163 +829,23 @@ function resetTrip(){
 // Marcar campo ruta como editado por usuario
 document.getElementById('inpRuta').addEventListener('input',function(){ this.dataset.u='1'; });
 
-// ════════════════════════════════════════════════
-// GOOGLE SHEETS
-// ════════════════════════════════════════════════
-async function postSheets(v){
-  try{
-    await fetch(SHEETS_URL,{
-      method:'POST', mode:'no-cors',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        ID:v.id, Fecha:v.fecha, Hora:v.hora, DiaSem:v.diaSem,
-        Pago:v.pago, Total:v.total,
-        Lat:v.startLat||'', Lng:v.startLng||'',
-        Direccion:v.startAddr||v.endAddr||v.ruta||''
-      })
-    });
-  }catch(e){ console.warn('Sheets POST:',e); }
-}
-
-async function loadSheets(manual){
-  var stEl=document.getElementById('sheetsStatus');
-  var dbEl=document.getElementById('sheetsDebug');
-  if(stEl) stEl.textContent='🔄 Conectando...';
-  var data=null;
-  try{
-    var r=await fetch(SHEETS_URL+'?action=get',{mode:'cors',cache:'no-store'});
-    data=JSON.parse(await r.text());
-  }catch(e1){
-    try{
-      data=await new Promise(function(res,rej){
-        var cb='_tb'+Date.now(), s=document.createElement('script');
-        var t=setTimeout(function(){ rej(); s.remove(); delete window[cb]; },10000);
-        window[cb]=function(d){ clearTimeout(t); delete window[cb]; s.remove(); res(d); };
-        s.src=SHEETS_URL+'?action=get&callback='+cb;
-        document.head.appendChild(s);
-      });
-    }catch(e2){
-      if(stEl) stEl.innerHTML='❌ Sin acceso a Sheets';
-      if(dbEl){
-        dbEl.style.display='block'; dbEl.style.color='#8097b8';
-        dbEl.innerHTML='El Apps Script necesita republicarse con acceso público.<br><br>'+
-          '<b style="color:#ffc107">Pasos desde el PC:</b><br>'+
-          '1. script.google.com → tu proyecto<br>'+
-          '2. Implementar → Administrar implementaciones<br>'+
-          '3. Editar → Acceso: <b>Cualquiera</b><br>'+
-          '4. Guardar y volver a intentarlo<br><br>'+
-          '<span style="color:#00e096">La app funciona sin Sheets — tus viajes se guardan en local.</span>';
-      }
-      if(manual) toast('❌ Sheets no accesible — ver Ajustes','#ff4560');
-      return;
-    }
-  }
-  if(!Array.isArray(data)||!data.length){
-    if(stEl) stEl.textContent='🔗 Conectado — sin filas';
-    if(dbEl){ dbEl.style.display='block'; dbEl.style.color='#00e096'; dbEl.textContent='Sheets OK pero sin datos aún.'; }
-    if(manual) toast('Sheets conectado sin datos','#ffc107');
-    return;
-  }
-  if(dbEl){ dbEl.style.display='block'; dbEl.style.color='#00e096'; dbEl.textContent='✅ Columnas: '+Object.keys(data[0]).join(', ')+' · '+data.length+' filas'; }
-  var localIds=new Set(DB.viajes.map(function(v){ return String(v.id); }));
-  var added=0;
-  data.forEach(function(row){
-    var rid=String(row.ID||'');
-    if(!rid||rid==='undefined') rid=(row.Fecha||'')+'_'+(row.Total||'0')+'_'+(row.Hora||'0');
-    if(localIds.has(rid)) return;
-    var hora=parseInt(row.Hora)||0, diaSem=parseInt(row.DiaSem)||0;
-    var fecha=row.Fecha||'', total=parseFloat(row.Total)||0;
-    var lat=parseFloat(row.Lat)||null, lng=parseFloat(row.Lng)||null;
-    var ts=fecha?fecha+'T'+String(hora).padStart(2,'0')+':00:00.000Z':new Date().toISOString();
-    if(!diaSem&&fecha){ try{ diaSem=new Date(fecha+'T12:00:00').getDay(); }catch(e){} }
-    DB.viajes.push({ id:rid, fecha:fecha, ts:ts, hora:hora, diaSem:diaSem,
-      pago:(row.Pago||'efectivo').toLowerCase(), plataforma:'', total:total, efectivo:total,
-      duracion:0, dist:0, startLat:lat, startLng:lng, startAddr:row.Direccion||'', nota:'' });
-    localIds.add(rid); added++;
-  });
-  if(stEl) stEl.textContent='🔗 '+data.length+' registros · +'+added+' nuevos';
-  var infoEl=document.getElementById('sheetsInfo');
-  if(infoEl) infoEl.textContent=data.length+' filas · '+added+' importadas';
-  if(added>0){ saveDB(); renderQuick(); toast('📥 '+added+' viaje'+(added>1?'s':'')+' de Sheets'); }
-  else if(manual) toast('✅ Ya sincronizado — sin viajes nuevos');
-}
-
 async function showRec(viajeRecien){
   var panel=document.getElementById('recPanel');
   var cont=document.getElementById('recContent');
   var meta=document.getElementById('recMeta');
   panel.style.display='block';
   setTimeout(function(){ panel.scrollIntoView({behavior:'smooth',block:'start'}); },150);
-  cont.innerHTML='<div style="color:var(--muted);font-size:.75rem;font-family:var(--mono);display:flex;align-items:center;gap:8px"><div class="dot spin"></div>Descargando datos de Sheets...</div>';
+  cont.innerHTML='<div style="color:var(--muted);font-size:.75rem;font-family:var(--mono);display:flex;align-items:center;gap:8px"><div class="dot spin"></div>Analizando viajes...</div>';
 
   var ahora=new Date(), hora=ahora.getHours();
   var dias=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
   var diaNom=dias[ahora.getDay()];
 
-  // ── 1. Descargar TODOS los datos de Sheets ──────────────────
-  var sheetsViajes=[];
-  try{
-    var r=await fetch(SHEETS_URL+'?action=get',{mode:'cors',cache:'no-store'});
-    var data=JSON.parse(await r.text());
-    if(Array.isArray(data)){
-      data.forEach(function(row){
-        var hora_=parseInt(row.Hora)||0;
-        var diaSem_=parseInt(row.DiaSem)||0;
-        var fecha_=row.Fecha||'';
-        if(!diaSem_&&fecha_){ try{ diaSem_=new Date(fecha_+'T12:00:00').getDay(); }catch(e){} }
-        sheetsViajes.push({
-          id:'sh_'+(row.ID||Math.random()),
-          fecha:fecha_, hora:hora_, diaSem:diaSem_,
-          pago:(row.Pago||'efectivo').toLowerCase(),
-          total:parseFloat(row.Total)||0,
-          startLat:parseFloat(row.Lat)||null,
-          startLng:parseFloat(row.Lng)||null,
-          startAddr:row.Direccion||''
-        });
-      });
-    }
-  }catch(e){
-    // JSONP fallback
-    try{
-      var data2=await new Promise(function(res,rej){
-        var cb='_rec'+Date.now(), s=document.createElement('script');
-        var t=setTimeout(function(){ rej(); s.remove(); delete window[cb]; },8000);
-        window[cb]=function(d){ clearTimeout(t); delete window[cb]; s.remove(); res(d); };
-        s.src=SHEETS_URL+'?action=get&callback='+cb;
-        document.head.appendChild(s);
-      });
-      if(Array.isArray(data2)){
-        data2.forEach(function(row){
-          var hora_=parseInt(row.Hora)||0;
-          var diaSem_=parseInt(row.DiaSem)||0;
-          var fecha_=row.Fecha||'';
-          if(!diaSem_&&fecha_){ try{ diaSem_=new Date(fecha_+'T12:00:00').getDay(); }catch(e){} }
-          sheetsViajes.push({
-            id:'sh_'+(row.ID||Math.random()),
-            fecha:fecha_, hora:hora_, diaSem:diaSem_,
-            pago:(row.Pago||'efectivo').toLowerCase(),
-            total:parseFloat(row.Total)||0,
-            startLat:parseFloat(row.Lat)||null,
-            startLng:parseFloat(row.Lng)||null,
-            startAddr:row.Direccion||''
-          });
-        });
-      }
-    }catch(e2){ /* sin sheets, solo local */ }
-  }
-
-  // ── 2. Combinar Sheets + local (sin duplicar) ───────────────
-  var localIds=new Set(DB.viajes.map(function(v){ return String(v.id); }));
+  // ── Usar solo los datos guardados localmente en este dispositivo ──
   var todosViajes=DB.viajes.slice();
-  sheetsViajes.forEach(function(v){
-    // Evitar duplicar — comparar por fecha+hora+total
-    var key=v.fecha+'_'+v.hora+'_'+v.total;
-    var yaExiste=DB.viajes.some(function(lv){ return lv.fecha===v.fecha&&lv.hora===v.hora&&Math.abs(lv.total-v.total)<0.01; });
-    if(!yaExiste) todosViajes.push(v);
-  });
 
   var total_viajes=todosViajes.length;
-  var fuente=sheetsViajes.length>0?'Sheets ('+sheetsViajes.length+'v) + local ('+DB.viajes.length+'v)':'Solo local ('+DB.viajes.length+'v)';
+  var fuente='Solo local ('+DB.viajes.length+'v)';
   meta.textContent=diaNom+' '+String(hora).padStart(2,'0')+':00 · '+total_viajes+' viajes totales';
   cont.innerHTML='<div style="color:var(--muted);font-size:.75rem;font-family:var(--mono);display:flex;align-items:center;gap:8px"><div class="dot spin"></div>Analizando '+total_viajes+' viajes...</div>';
 
@@ -932,7 +887,12 @@ async function showRec(viajeRecien){
 
   // ── 7. Render ────────────────────────────────────────────────
   var ics=['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣'];
+  var top=lista[0];
+  var fraseTop = top.lat ? await fraseZonaHumana(top) : ('la zona de '+top.k);
   var html=
+    '<div style="font-size:.8rem;line-height:1.6;margin-bottom:10px;padding:10px 12px;background:var(--s3);border-radius:10px;border:1px solid var(--border)">'+
+    '🤖 Según mi histórico, te recomiendo trabajar en <b style="color:var(--acc)">'+fraseTop+'</b> — suele dar €'+top.prom.toFixed(2)+' de media por viaje.'+
+    '</div>'+
     '<div style="font-size:.58rem;font-family:var(--mono);margin-bottom:8px;line-height:1.7">'+
     (miLat?'<span style="color:var(--acc)">📍 Por cercanía + ingresos</span>':'<span style="color:var(--muted2)">📊 Por ingresos</span>')+
     ' &nbsp;·&nbsp; <span style="color:var(--muted)">'+bLabel+' · '+bloque.length+'v</span><br>'+
@@ -1477,8 +1437,6 @@ self.addEventListener('message', function(e){
       var dias = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
       self.registration.showNotification('⚡ Hora punta en 10 min', {
         body: 'Las '+String(horaProx).padStart(2,'0')+':00h — €'+match.prom.toFixed(2)+'/viaje histórico'+(match.n?' ('+match.n+'v)':''),
-        icon: 'https://marcosalc2.github.io/taxibook/icon.png',
-        badge: 'https://marcosalc2.github.io/taxibook/icon.png',
         tag: 'taxibook-punta',
         renotify: true,
         requireInteraction: false
@@ -1589,10 +1547,274 @@ function desactivarNotif(){
 }
 
 // ════════════════════════════════════════════════
+// LLUVIA EN TIEMPO REAL
+// ════════════════════════════════════════════════
+var rainActive=false;
+var RAIN_CODES=[51,53,55,56,57,61,63,65,66,67,80,81,82,95,96,99];
+
+async function reverseZona(lat,lng){
+  try{
+    var r=await fetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat='+lat+'&lon='+lng+'&zoom=16&addressdetails=1');
+    var d=await r.json();
+    var a=d.address||{};
+    return a.suburb||a.neighbourhood||a.quarter||a.road||a.city_district||d.name||'tu zona';
+  }catch(e){ return 'tu zona'; }
+}
+
+async function checkRainZone(){
+  try{
+    var pos=await getGPS();
+    var r=await fetch('https://api.open-meteo.com/v1/forecast?latitude='+pos.lat+'&longitude='+pos.lng+'&current=precipitation,weather_code&timezone=auto');
+    var d=await r.json();
+    var cur=d.current||{};
+    var lloviendo = (cur.precipitation>0) || RAIN_CODES.indexOf(cur.weather_code)!==-1;
+    var banner=document.getElementById('rainBanner');
+    if(lloviendo){
+      var zona=await reverseZona(pos.lat,pos.lng);
+      banner.innerHTML='🌧️ <b>Ahora está lloviendo en la zona de '+zona+'</b>';
+      banner.style.display='flex';
+      if(!rainActive) toast('🌧️ Empieza a llover en '+zona,'#00b4ff');
+      rainActive=true;
+    } else {
+      banner.style.display='none';
+      rainActive=false;
+    }
+  }catch(e){ /* sin conexión o GPS no disponible — no se muestra nada */ }
+}
+
+setInterval(checkRainZone, 5*60*1000);
+setTimeout(checkRainZone, 4000);
+
+// ════════════════════════════════════════════════
+// EVENTOS DEL DÍA (manifestaciones / carreras populares)
+// Fuente: Portal de Datos Abiertos del Ayto. de Madrid (KML, tiempo real)
+// Aviso: si el navegador bloquea la petición (CORS), se muestra un enlace
+// directo a la fuente oficial en su lugar — nunca se bloquea el inicio de jornada.
+// ════════════════════════════════════════════════
+var MADRID_KML='https://datos.madrid.es/dataset/208252-0-incidencias-viapublica-mapa/resource/208252-0-incidencias-viapublica-mapa/download/208252-0-incidencias-viapublica-mapa.kml';
+
+async function cargarEventosJornada(){
+  var box=document.getElementById('gateEventos');
+  box.style.display='block';
+  box.innerHTML='<div class="dot spin" style="display:inline-block"></div> Consultando incidencias oficiales de hoy...';
+  try{
+    var r=await fetch(MADRID_KML);
+    if(!r.ok) throw new Error('http');
+    var txt=await r.text();
+    var xml=new DOMParser().parseFromString(txt,'text/xml');
+    var placemarks=Array.from(xml.getElementsByTagName('Placemark'));
+    var eventos=placemarks.filter(function(p){
+      var d=(p.getElementsByTagName('description')[0]||{}).textContent||'';
+      var n=(p.getElementsByTagName('name')[0]||{}).textContent||'';
+      var txt=(n+' '+d).toLowerCase();
+      return txt.indexOf('manifest')!==-1 || txt.indexOf('concentraci')!==-1 || txt.indexOf('carrera')!==-1 || txt.indexOf('popular')!==-1 || txt.indexOf('deportiv')!==-1;
+    }).slice(0,6);
+
+    if(!eventos.length){
+      box.innerHTML='✅ No hay manifestaciones ni carreras populares notificadas para hoy en el portal oficial.';
+      return;
+    }
+    box.innerHTML=eventos.map(function(p){
+      var n=(p.getElementsByTagName('name')[0]||{}).textContent||'Evento';
+      var d=(p.getElementsByTagName('description')[0]||{}).textContent||'';
+      d=d.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,200);
+      return '<div style="margin-bottom:7px">📍 <b>'+n+'</b><br>'+d+'</div>';
+    }).join('');
+  }catch(e){
+    box.innerHTML='⚠️ No se ha podido consultar el aviso automático de hoy (sin conexión o bloqueado por el navegador).<br>'+
+      'Consúltalo aquí antes de salir: <a href="https://www.madrid.es/portales/munimadrid/es/Inicio/Movilidad-y-transportes/Incidencias-de-Trafico/" target="_blank">Incidencias de tráfico — Ayto. Madrid</a>';
+  }
+}
+
+// ════════════════════════════════════════════════
+// RECOMENDACIONES HUMANIZADAS — calles cercanas a una zona
+// ════════════════════════════════════════════════
+var zonaAmpliadaCache={};
+
+async function callesCercanas(lat,lng,excluir){
+  if(!lat||!lng) return [];
+  var key=lat.toFixed(3)+','+lng.toFixed(3);
+  if(zonaAmpliadaCache[key]) return zonaAmpliadaCache[key];
+  try{
+    var q='[out:json][timeout:5];way(around:200,'+lat+','+lng+')[highway~"^(primary|secondary|tertiary|primary_link|secondary_link)$"][name];out tags 8;';
+    var r=await fetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(q));
+    var d=await r.json();
+    var nombres=[];
+    (d.elements||[]).forEach(function(el){
+      var n=el.tags&&el.tags.name;
+      if(n && nombres.indexOf(n)===-1 && n!==excluir) nombres.push(n);
+    });
+    zonaAmpliadaCache[key]=nombres;
+    return nombres;
+  }catch(e){ return []; }
+}
+
+async function fraseZonaHumana(z){
+  // z: {k, lat, lng}
+  var extra=await callesCercanas(z.lat,z.lng,z.k);
+  if(extra.length>=2){
+    return 'la zona comprendida entre '+z.k+', '+extra[0]+' y '+extra[1];
+  } else if(extra.length===1){
+    return 'la zona de '+z.k+', cerca de '+extra[0];
+  }
+  return 'la zona de '+z.k;
+}
+
+// ════════════════════════════════════════════════
+// JORNADA — puerta de entrada, fin de jornada y resumen
+// ════════════════════════════════════════════════
+var JORNADA_KEY='taxibook_jornada';
+var gateImportOk=false;
+
+function loadJornada(){ try{return JSON.parse(localStorage.getItem(JORNADA_KEY)||'null');}catch(e){return null;} }
+function saveJornada(j){ localStorage.setItem(JORNADA_KEY, JSON.stringify(j)); }
+
+function checkJornadaGate(){
+  var j=loadJornada();
+  var gate=document.getElementById('gateOverlay');
+  var banner=document.getElementById('jornadaBanner');
+  if(j && j.activa && j.fecha===today()){
+    gate.style.display='none';
+    banner.style.display='flex';
+    document.getElementById('jbHora').textContent=fmtT(j.inicio);
+  } else {
+    gateImportOk=false;
+    document.getElementById('btnIniciarJornada').disabled=true;
+    document.getElementById('gateCsvStatus').className='gate-status';
+    document.getElementById('gateCsvStatus').textContent='';
+    banner.style.display='none';
+    gate.style.display='flex';
+    cargarEventosJornada();
+  }
+}
+
+// --- Parser CSV simple (soporta campos entre comillas) ---
+function parseCSVLine(line){
+  var out=[],cur='',inQ=false;
+  for(var i=0;i<line.length;i++){
+    var c=line[i];
+    if(c==='"'){ inQ=!inQ; continue; }
+    if(c===','&&!inQ){ out.push(cur); cur=''; continue; }
+    cur+=c;
+  }
+  out.push(cur);
+  return out;
+}
+
+function importCSVRows(text){
+  var lines=text.split(/\r?\n/).filter(function(l){return l.trim().length;});
+  if(lines.length<2) return 0;
+  var added=0;
+  for(var i=1;i<lines.length;i++){
+    var c=parseCSVLine(lines[i]);
+    if(c.length<8) continue;
+    var id=c[0]||('csv_'+Date.now()+'_'+i);
+    if(DB.viajes.some(function(v){return v.id===id;})) continue;
+    var fecha=c[1], hora=parseInt(c[2],10)||0;
+    var tsGuess=fecha+'T'+String(hora).padStart(2,'0')+':00:00';
+    DB.viajes.push({
+      id:id, fecha:fecha, ts:tsGuess, hora:hora, diaSem:c[3]||'',
+      pago:c[4]||'efectivo', plataforma:c[5]||'', total:parseFloat(c[6])||0,
+      efectivo:parseFloat(c[7])||0, duracion:0, dist:parseFloat(c[8])||0,
+      startLat:parseFloat(c[9])||null, startLng:parseFloat(c[10])||null,
+      startAddr:c[11]||'', endLat:null, endLng:null, endAddr:'', ruta:'', nota:c[12]||''
+    });
+    added++;
+  }
+  return added;
+}
+
+function handleGateCSV(e){
+  var file=e.target.files[0];
+  var status=document.getElementById('gateCsvStatus');
+  if(!file){ return; }
+  var reader=new FileReader();
+  reader.onload=function(ev){
+    try{
+      var added=importCSVRows(ev.target.result);
+      saveDB();
+      gateImportOk=true;
+      document.getElementById('btnIniciarJornada').disabled=false;
+      status.className='gate-status ok';
+      status.textContent='✅ Importado correctamente ('+added+' viajes nuevos añadidos).';
+      renderQuick();
+    }catch(err){
+      gateImportOk=false;
+      document.getElementById('btnIniciarJornada').disabled=true;
+      status.className='gate-status err';
+      status.textContent='❌ No se pudo leer el CSV. Revisa el formato e inténtalo de nuevo.';
+    }
+  };
+  reader.readAsText(file);
+}
+
+function iniciarJornadaConfirm(){
+  if(!gateImportOk){ toast('Primero importa el CSV','#ff4560'); return; }
+  var j={fecha:today(), activa:true, inicio:new Date().toISOString()};
+  saveJornada(j);
+  checkJornadaGate();
+  toast('🚦 Jornada iniciada');
+}
+
+function finJornadaClick(){
+  if(typeof trip!=='undefined' && trip){ toast('⚠️ Termina el viaje en curso primero','#ff4560'); return; }
+  var j=loadJornada();
+  if(!j || !j.activa){ toast('No hay jornada activa','#ffc107'); return; }
+  document.getElementById('chkExportado').checked=false;
+  document.getElementById('chkGmail').checked=false;
+  document.getElementById('finChecklistView').style.display='block';
+  document.getElementById('finResumenView').style.display='none';
+  document.getElementById('btnVerResumen').disabled=true;
+  document.getElementById('finOverlay').style.display='flex';
+}
+
+function updFinBtn(){
+  var ok=document.getElementById('chkExportado').checked && document.getElementById('chkGmail').checked;
+  document.getElementById('btnVerResumen').disabled=!ok;
+}
+
+function calcResumenDia(j){
+  var vs=DB.viajes.filter(function(v){return v.fecha===j.fecha;});
+  var total=0,tarjetaApp=0,efectivo=0,km=0;
+  vs.forEach(function(v){
+    total+=v.total||0; km+=v.dist||0;
+    if(v.pago==='efectivo') efectivo+=v.total||0; else tarjetaApp+=v.total||0;
+  });
+  var ms=new Date()-new Date(j.inicio);
+  var horas=ms/3600000;
+  var h=Math.floor(ms/3600000), m=Math.floor((ms%3600000)/60000);
+  var media = horas>0.05 ? total/horas : 0;
+  return {total:total,tarjetaApp:tarjetaApp,efectivo:efectivo,km:km,tiempo:h+'h '+String(m).padStart(2,'0')+'m',media:media,nViajes:vs.length};
+}
+
+function verResumenDia(){
+  var j=loadJornada();
+  if(!j){ return; }
+  var r=calcResumenDia(j);
+  document.getElementById('resumenFecha').textContent=fmtD(j.fecha)+' · '+r.nViajes+' viajes';
+  document.getElementById('resumenGrid').innerHTML=
+    '<div class="resumen-item"><div class="rl">Total facturado</div><div class="rv" style="color:var(--acc)">€'+fmt(r.total)+'</div></div>'+
+    '<div class="resumen-item"><div class="rl">Tarjeta+App</div><div class="rv">€'+fmt(r.tarjetaApp)+'</div></div>'+
+    '<div class="resumen-item"><div class="rl">Efectivo</div><div class="rv">€'+fmt(r.efectivo)+'</div></div>'+
+    '<div class="resumen-item"><div class="rl">Km recorridos</div><div class="rv">'+r.km.toFixed(1)+' km</div></div>'+
+    '<div class="resumen-item"><div class="rl">Tiempo trabajado</div><div class="rv">'+r.tiempo+'</div></div>'+
+    '<div class="resumen-item"><div class="rl">Media €/hora</div><div class="rv" style="color:var(--green)">€'+fmt(r.media)+'</div></div>';
+  document.getElementById('finChecklistView').style.display='none';
+  document.getElementById('finResumenView').style.display='block';
+}
+
+function finalizarJornada(){
+  localStorage.removeItem(JORNADA_KEY);
+  document.getElementById('finOverlay').style.display='none';
+  checkJornadaGate();
+  toast('✅ Jornada finalizada');
+}
+
+// ════════════════════════════════════════════════
 // INIT
 // ════════════════════════════════════════════════
 renderQuick();
-setTimeout(function(){ loadSheets(false); }, 1500);
+checkJornadaGate();
 
 // Reactivar si ya tenía permiso
 if(localStorage.getItem('taxibook_notif')==='1' && typeof Notification!=='undefined' && Notification.permission==='granted'){
