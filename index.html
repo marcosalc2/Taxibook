@@ -166,6 +166,9 @@ select option{background:var(--s2)}
 .gate-events{background:rgba(255,193,7,.08);border:1px solid rgba(255,193,7,.3);border-radius:10px;padding:11px;margin-bottom:12px;font-size:.72rem;line-height:1.6;color:var(--text)}
 .gate-events b{color:var(--yellow)}
 .gate-events a{color:var(--acc)}
+.backup-banner{padding:9px 16px;font-size:.74rem;display:flex;align-items:center;gap:8px}
+.backup-banner.warn{background:linear-gradient(135deg,rgba(255,193,7,.18),rgba(255,193,7,.05));border-bottom:1px solid rgba(255,193,7,.35);color:#ffd873}
+.backup-banner.crit{background:linear-gradient(135deg,rgba(255,69,96,.2),rgba(255,69,96,.06));border-bottom:1px solid rgba(255,69,96,.4);color:#ff8ba0}
 </style>
 </head>
 <body>
@@ -239,6 +242,7 @@ select option{background:var(--s2)}
 </div>
 
 <div class="rain-banner" id="rainBanner" style="display:none"></div>
+<div class="backup-banner" id="backupBanner" style="display:none"></div>
 
 <div class="nav">
   <button class="nav-btn active" onclick="nav('viaje',this)"><span class="ni">🚗</span>Viaje</button>
@@ -445,14 +449,19 @@ select option{background:var(--s2)}
   </div>
 
   <div class="card">
+    <div class="ct">🗂️ Copia de seguridad</div>
+    <div id="backupInfo" style="font-size:.72rem;color:var(--muted2);font-family:var(--mono);line-height:1.8;margin-bottom:10px"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn-sec" onclick="exportCSV()">📤 CSV</button>
+      <button class="btn-sec" onclick="exportJSON()">💾 JSON</button>
+    </div>
+  </div>
+
+  <div class="card">
     <div class="ct">Almacenamiento local</div>
     <div id="storInfo" style="font-size:.72rem;color:var(--muted2);font-family:var(--mono);line-height:1.8;margin-bottom:8px"></div>
     <div class="stor-bar"><div class="stor-fill" id="storBar" style="width:0%"></div></div>
     <div style="display:flex;gap:8px;margin-top:10px">
-      <button class="btn-sec" onclick="exportCSV()">📤 CSV</button>
-      <button class="btn-sec" onclick="exportJSON()">💾 JSON</button>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:8px">
       <button class="btn-sec yellow" onclick="purge90()">🗑 Borrar +90 días</button>
       <button class="btn-sec red" onclick="resetAll()">⚠️ Borrar todo</button>
     </div>
@@ -1246,6 +1255,7 @@ function delViaje(id){
 // AJUSTES
 // ════════════════════════════════════════════════
 function renderAjustes(){
+  renderBackupStatus();
   // Sliders
   var corte = getCorteDia();
   var obj   = getObjetivo();
@@ -1330,11 +1340,13 @@ function exportCSV(){
   var rows=['ID,Fecha,Hora,DiaSem,Pago,Plataforma,Total,Efectivo,Dist,Lat,Lng,Direccion,Nota'];
   DB.viajes.forEach(function(v){ rows.push([v.id,v.fecha,v.hora,v.diaSem,v.pago,v.plataforma||'',v.total,v.efectivo||0,v.dist||0,v.startLat||'',v.startLng||'','"'+(v.startAddr||'').replace(/"/g,"'")+'"','"'+(v.nota||'').replace(/"/g,"'")+'"'].join(',')); });
   dl('taxibook_'+today()+'.csv',rows.join('\n'),'text/csv');
+  marcarBackup();
   toast('📤 CSV exportado');
 }
 function exportJSON(){
   if(!DB.viajes.length){toast('Sin viajes','#ffc107');return;}
   dl('taxibook_'+today()+'.json',JSON.stringify(DB,null,2),'application/json');
+  marcarBackup();
   toast('💾 JSON exportado');
 }
 function dl(name,content,type){ var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([content],{type:type}));a.download=name;a.click();setTimeout(function(){URL.revokeObjectURL(a.href);},1000); }
@@ -1662,6 +1674,52 @@ async function fraseZonaHumana(z){
 }
 
 // ════════════════════════════════════════════════
+// COPIA DE SEGURIDAD — aviso de tiempo sin exportar
+// ════════════════════════════════════════════════
+var BACKUP_KEY='taxibook_ultimoBackup';
+
+function marcarBackup(){
+  localStorage.setItem(BACKUP_KEY, new Date().toISOString());
+  renderBackupStatus();
+}
+
+function renderBackupStatus(){
+  var t=localStorage.getItem(BACKUP_KEY);
+  var banner=document.getElementById('backupBanner');
+  var info=document.getElementById('backupInfo');
+  var sinDatos = DB.viajes.length===0;
+
+  if(!t){
+    if(info) info.innerHTML = sinDatos
+      ? 'Aún no tienes viajes que exportar.'
+      : '<span style="color:var(--yellow)">⚠️ Nunca has hecho una copia de seguridad.</span>';
+    if(!sinDatos){ banner.className='backup-banner warn'; banner.innerHTML='⚠️ <b>Nunca has hecho una copia de seguridad</b> — expórtala en Ajustes.'; banner.style.display='flex'; }
+    else if(banner) banner.style.display='none';
+    return;
+  }
+
+  var ms=new Date()-new Date(t);
+  var dias=Math.floor(ms/86400000), horas=Math.floor((ms%86400000)/3600000);
+  var txt = dias>0 ? (dias+' día'+(dias>1?'s':'')+(horas>0?' '+horas+'h':'')) : (horas>0?horas+'h':'menos de 1h');
+
+  if(info) info.innerHTML='Última copia: hace <b style="color:'+(dias>=2?'var(--red)':dias>=1?'var(--yellow)':'var(--green)')+'">'+txt+'</b>';
+
+  if(dias>=2){
+    banner.className='backup-banner crit';
+    banner.innerHTML='🗂️ <b>Llevas '+txt+' sin hacer copia de seguridad</b> — expórtala cuanto antes.';
+    banner.style.display='flex';
+  } else if(dias>=1){
+    banner.className='backup-banner warn';
+    banner.innerHTML='🗂️ <b>Llevas '+txt+' sin hacer copia de seguridad.</b>';
+    banner.style.display='flex';
+  } else if(banner){
+    banner.style.display='none';
+  }
+}
+
+setInterval(renderBackupStatus, 30*60*1000);
+
+// ════════════════════════════════════════════════
 // JORNADA — puerta de entrada, fin de jornada y resumen
 // ════════════════════════════════════════════════
 var JORNADA_KEY='taxibook_jornada';
@@ -1815,6 +1873,7 @@ function finalizarJornada(){
 // ════════════════════════════════════════════════
 renderQuick();
 checkJornadaGate();
+renderBackupStatus();
 
 // Reactivar si ya tenía permiso
 if(localStorage.getItem('taxibook_notif')==='1' && typeof Notification!=='undefined' && Notification.permission==='granted'){
