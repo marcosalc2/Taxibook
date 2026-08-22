@@ -883,20 +883,24 @@ function renderRecMap(lista, miLat, miLng){
   }
   recMarkers.forEach(function(m){recMap.removeLayer(m);}); recMarkers=[];
   var ics=['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣'];
-  var bounds=[];
-  conZonas.forEach(function(z,i){
+  var boundsFit=[]; // solo mi ubicación + zona nº1 encuadran el mapa
+  conZonas.forEach(function(z){
     var idx=lista.indexOf(z);
     var icon=L.divIcon({html:'<div style="background:var(--s2,#111827);border:2px solid var(--purple,#a855f7);border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px">'+(ics[idx]||'📍')+'</div>',iconSize:[28,28],iconAnchor:[14,14],className:''});
     var m=L.marker([z.lat,z.lng],{icon:icon}).bindPopup('<b>'+z.k+'</b><br>€'+z.prom.toFixed(2)+'/viaje · '+z.n+'v');
-    m.addTo(recMap); recMarkers.push(m); bounds.push([z.lat,z.lng]);
+    m.addTo(recMap); recMarkers.push(m);
+    if(idx===0) boundsFit.push([z.lat,z.lng]);
   });
   if(miLat&&miLng){
     var meIcon=L.divIcon({html:'<div style="background:#00e5ff;border:2px solid #fff;border-radius:50%;width:16px;height:16px;box-shadow:0 0 0 6px rgba(0,229,255,.25)"></div>',iconSize:[16,16],iconAnchor:[8,8],className:''});
     var mm=L.marker([miLat,miLng],{icon:meIcon}).bindPopup('📍 Tu ubicación');
-    mm.addTo(recMap); recMarkers.push(mm); bounds.push([miLat,miLng]);
+    mm.addTo(recMap); recMarkers.push(mm); boundsFit.push([miLat,miLng]);
   }
-  if(bounds.length===1) recMap.setView(bounds[0],14);
-  else recMap.fitBounds(bounds,{padding:[24,24]});
+  // Si la zona nº1 no tiene coordenadas guardadas, usa la primera que sí las tenga
+  if(boundsFit.length<2 && conZonas.length){ boundsFit.push([conZonas[0].lat,conZonas[0].lng]); }
+  if(!boundsFit.length){ el.style.display='none'; return; }
+  if(boundsFit.length===1) recMap.setView(boundsFit[0],14);
+  else recMap.fitBounds(boundsFit,{padding:[28,28],maxZoom:15});
   setTimeout(function(){recMap.invalidateSize();},150);
 }
 
@@ -963,10 +967,12 @@ async function showRec(viajeRecien){
   var ics=['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣'];
   var top=lista[0];
   var fraseTop = top.lat ? await fraseZonaHumana(top) : ('la zona de '+top.k);
+  var avisoSinGPS = (!top.lat) ? '<div style="font-size:.62rem;color:var(--yellow);margin-bottom:8px">⚠️ Esta zona no tiene coordenadas guardadas, por eso no aparece marcada en el mini-mapa — usa el botón Maps de abajo para localizarla.</div>' : '';
   var html=
     '<div style="font-size:.8rem;line-height:1.6;margin-bottom:10px;padding:10px 12px;background:var(--s3);border-radius:10px;border:1px solid var(--border)">'+
     '🤖 Según mi histórico, te recomiendo trabajar en <b style="color:var(--acc)">'+fraseTop+'</b> — suele dar €'+top.prom.toFixed(2)+' de media por viaje.'+
     '</div>'+
+    avisoSinGPS+
     '<div style="font-size:.58rem;font-family:var(--mono);margin-bottom:8px;line-height:1.7">'+
     (miLat?'<span style="color:var(--acc)">📍 Por cercanía + ingresos</span>':'<span style="color:var(--muted2)">📊 Por ingresos</span>')+
     ' &nbsp;·&nbsp; <span style="color:var(--muted)">'+bLabel+' · '+bloque.length+'v</span><br>'+
