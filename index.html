@@ -546,7 +546,28 @@ function saveDB(){
   }
 }
 
+function diaSemDeFecha(fecha){
+  if(!fecha) return null;
+  var d=new Date(fecha+'T12:00:00');
+  return isNaN(d.getTime()) ? null : d.getDay();
+}
+
+function normalizarDiaSem(){
+  var cambios=0;
+  DB.viajes.forEach(function(v){
+    var esValido = (typeof v.diaSem==='number') && v.diaSem>=0 && v.diaSem<=6;
+    if(!esValido){
+      var calc=diaSemDeFecha(v.fecha);
+      if(calc!==null){ v.diaSem=calc; cambios++; }
+    }
+  });
+  if(cambios>0) saveDB();
+  return cambios;
+}
+
 var DB = loadDB();
+var _diaSemFix = normalizarDiaSem();
+if(_diaSemFix>0) console.log('TaxiBook: corregido diaSem en '+_diaSemFix+' viajes importados.');
 
 // ════════════════════════════════════════════════
 // UTILIDADES
@@ -1831,8 +1852,10 @@ function importCSVRows(text){
     if(DB.viajes.some(function(v){return v.id===id;})) continue;
     var fecha=c[1], hora=parseInt(c[2],10)||0;
     var tsGuess=fecha+'T'+String(hora).padStart(2,'0')+':00:00';
+    var diaSemCalc=diaSemDeFecha(fecha);
+    if(diaSemCalc===null){ var dsRaw=parseInt(c[3],10); diaSemCalc=(!isNaN(dsRaw)&&dsRaw>=0&&dsRaw<=6)?dsRaw:0; }
     DB.viajes.push({
-      id:id, fecha:fecha, ts:tsGuess, hora:hora, diaSem:c[3]||'',
+      id:id, fecha:fecha, ts:tsGuess, hora:hora, diaSem:diaSemCalc,
       pago:c[4]||'efectivo', plataforma:c[5]||'', total:parseFloat(c[6])||0,
       efectivo:parseFloat(c[7])||0, duracion:0, dist:parseFloat(c[8])||0,
       startLat:parseFloat(c[9])||null, startLng:parseFloat(c[10])||null,
