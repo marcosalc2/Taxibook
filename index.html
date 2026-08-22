@@ -552,6 +552,15 @@ function diaSemDeFecha(fecha){
   return isNaN(d.getTime()) ? null : d.getDay();
 }
 
+// Día de la semana "de confianza" para un viaje: siempre se recalcula desde
+// la fecha (fuente fiable) en lugar de fiarse del campo diaSem guardado,
+// que puede venir corrupto de importaciones CSV antiguas.
+function diaSemViaje(v){
+  var d=diaSemDeFecha(v.fecha);
+  if(d!==null) return d;
+  return (typeof v.diaSem==='number' && v.diaSem>=0 && v.diaSem<=6) ? v.diaSem : null;
+}
+
 function normalizarDiaSem(){
   var cambios=0;
   DB.viajes.forEach(function(v){
@@ -917,7 +926,7 @@ async function showRec(viajeRecien){
   try{ var gp=await getGPS(); miLat=gp.lat; miLng=gp.lng; }catch(e){}
 
   // ── 4. Seleccionar bloque horario con fallback ───────────────
-  var bloque=todosViajes.filter(function(v){ return v.diaSem===ahora.getDay()&&Math.abs(v.hora-hora)<=2; });
+  var bloque=todosViajes.filter(function(v){ return diaSemViaje(v)===ahora.getDay()&&Math.abs(v.hora-hora)<=2; });
   var bLabel=diaNom+' ±2h';
   if(bloque.length<5){ bloque=todosViajes.filter(function(v){ return Math.abs(v.hora-hora)<=2; }); bLabel='Todos los días ±2h'; }
   if(bloque.length<5){ bloque=todosViajes.slice(); bLabel='Historial completo'; }
@@ -1219,7 +1228,7 @@ function selD(i){ selDia=i; renderMapa(); }
 function selH(h){ selHora=selHora===h?null:h; renderMapa(); }
 
 function updateMap(){
-  var vs=DB.viajes.filter(function(v){return v.diaSem===selDia;});
+  var vs=DB.viajes.filter(function(v){return diaSemViaje(v)===selDia;});
   if(selHora!==null){ var h=parseInt(selHora); vs=vs.filter(function(v){return v.hora===h;}); }
   var gps=vs.filter(function(v){return v.startLat;});
   var mel=document.getElementById('leafletMap');
@@ -1571,7 +1580,7 @@ function iniciarVigilanciaLocal(){
     Object.keys(ultimaNotif).forEach(function(k){ if(k.indexOf(hoy)===-1) delete ultimaNotif[k]; });
     localStorage.setItem('taxibook_ultimaNotif', JSON.stringify(ultimaNotif));
     var dias=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
-    var dv=DB.viajes.filter(function(v){return v.diaSem===ahora.getDay()&&v.hora===horaProx;});
+    var dv=DB.viajes.filter(function(v){return diaSemViaje(v)===ahora.getDay()&&v.hora===horaProx;});
     var prom=dv.length?dv.reduce(function(s,v){return s+v.total;},0)/dv.length:match.prom;
     try{
       new Notification('⚡ Hora punta en 10 min',{
