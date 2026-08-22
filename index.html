@@ -952,7 +952,7 @@ async function showRec(viajeRecien){
     var k=e[0],z=e[1];
     var d=(miLat&&z.lat)?haversine(miLat,miLng,z.lat,z.lng):null;
     var prom=z.t/z.n;
-    return {k:k,n:z.n,prom:prom,dist:d,score:d!==null?prom/(1+d):prom};
+    return {k:k,n:z.n,prom:prom,dist:d,score:d!==null?prom/(1+d):prom,lat:z.lat,lng:z.lng};
   }).sort(function(a,b){ return b.score-a.score; }).slice(0,6);
 
   if(!lista.length){
