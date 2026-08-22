@@ -208,6 +208,8 @@ select option{background:var(--s2)}
     <div class="gate-title" style="text-align:center">Fin de jornada</div>
     <div class="gate-sub" style="text-align:center">Completa estos pasos antes de ver tu resumen del día.</div>
 
+    <div class="gate-events" id="finBackupInfo" style="display:none"></div>
+
     <div class="gate-step">
       <div style="margin-bottom:8px"><b style="font-size:.82rem">Hoja de ruta</b></div>
       <button class="btn-sec" style="width:100%;padding:12px;margin-bottom:12px" onclick="exportCSV()">📤 Exportar a CSV (hoja de cálculo)</button>
@@ -216,7 +218,7 @@ select option{background:var(--s2)}
         <label for="chkExportado">He exportado los datos de hoy a la hoja de cálculo (CSV)</label>
       </div>
       <div class="checklist-item">
-        <input type="checkbox" id="chkGmail" onchange="updFinBtn()">
+        <input type="checkbox" id="chkGmail" onchange="marcarEnviadoFin()">
         <label for="chkGmail">He guardado el archivo exportado en Gmail (adjunto/enviado)</label>
       </div>
     </div>
@@ -351,6 +353,7 @@ select option{background:var(--s2)}
       </div>
       <button onclick="document.getElementById('recPanel').style.display='none'" style="background:none;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer">✕</button>
     </div>
+    <div id="recMapEl" style="height:190px;border-radius:10px;border:1px solid var(--border);overflow:hidden;margin-bottom:10px;display:none"></div>
     <div id="recContent"></div>
   </div>
 
@@ -839,6 +842,34 @@ function resetTrip(){
 // Marcar campo ruta como editado por usuario
 document.getElementById('inpRuta').addEventListener('input',function(){ this.dataset.u='1'; });
 
+function renderRecMap(lista, miLat, miLng){
+  var el=document.getElementById('recMapEl');
+  var conZonas=lista.filter(function(z){return z.lat&&z.lng;});
+  if(!conZonas.length && !miLat){ el.style.display='none'; return; }
+  el.style.display='block';
+  if(!recMap){
+    recMap=L.map('recMapEl',{zoomControl:false,attributionControl:false});
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(recMap);
+  }
+  recMarkers.forEach(function(m){recMap.removeLayer(m);}); recMarkers=[];
+  var ics=['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣'];
+  var bounds=[];
+  conZonas.forEach(function(z,i){
+    var idx=lista.indexOf(z);
+    var icon=L.divIcon({html:'<div style="background:var(--s2,#111827);border:2px solid var(--purple,#a855f7);border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px">'+(ics[idx]||'📍')+'</div>',iconSize:[28,28],iconAnchor:[14,14],className:''});
+    var m=L.marker([z.lat,z.lng],{icon:icon}).bindPopup('<b>'+z.k+'</b><br>€'+z.prom.toFixed(2)+'/viaje · '+z.n+'v');
+    m.addTo(recMap); recMarkers.push(m); bounds.push([z.lat,z.lng]);
+  });
+  if(miLat&&miLng){
+    var meIcon=L.divIcon({html:'<div style="background:#00e5ff;border:2px solid #fff;border-radius:50%;width:16px;height:16px;box-shadow:0 0 0 6px rgba(0,229,255,.25)"></div>',iconSize:[16,16],iconAnchor:[8,8],className:''});
+    var mm=L.marker([miLat,miLng],{icon:meIcon}).bindPopup('📍 Tu ubicación');
+    mm.addTo(recMap); recMarkers.push(mm); bounds.push([miLat,miLng]);
+  }
+  if(bounds.length===1) recMap.setView(bounds[0],14);
+  else recMap.fitBounds(bounds,{padding:[24,24]});
+  setTimeout(function(){recMap.invalidateSize();},150);
+}
+
 async function showRec(viajeRecien){
   var panel=document.getElementById('recPanel');
   var cont=document.getElementById('recContent');
@@ -892,8 +923,11 @@ async function showRec(viajeRecien){
 
   if(!lista.length){
     cont.innerHTML='<div style="color:var(--muted);font-size:.78rem;text-align:center;padding:10px">Sin direcciones en el historial.<br><span style="font-size:.65rem">Activa GPS al iniciar viaje para ver recomendaciones.</span></div>';
+    document.getElementById('recMapEl').style.display='none';
     return;
   }
+
+  renderRecMap(lista, miLat, miLng);
 
   // ── 7. Render ────────────────────────────────────────────────
   var ics=['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣'];
@@ -1151,6 +1185,7 @@ function renderSemana(){
 // MAPA
 // ════════════════════════════════════════════════
 var map=null, markers=[], selDia=new Date().getDay(), selHora=null;
+var recMap=null, recMarkers=[];
 var DIAS=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
 var HORAS=['00','01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23'];
 
@@ -1719,6 +1754,31 @@ function renderBackupStatus(){
 
 setInterval(renderBackupStatus, 30*60*1000);
 
+function renderFinBackupInfo(){
+  var box=document.getElementById('finBackupInfo');
+  var t=localStorage.getItem(BACKUP_KEY);
+  if(!t){
+    box.className='gate-events';
+    box.innerHTML='⚠️ <b>Nunca has hecho una copia de seguridad.</b> Aprovecha para exportarla ahora.';
+    box.style.display='block';
+    return;
+  }
+  var ms=new Date()-new Date(t);
+  var dias=Math.floor(ms/86400000), horas=Math.floor((ms%86400000)/3600000);
+  var txt = dias>0 ? (dias+' día'+(dias>1?'s':'')+(horas>0?' '+horas+'h':'')) : (horas>0?horas+'h':'menos de 1h');
+  box.className='gate-events';
+  box.innerHTML='🗂️ Última copia de seguridad: hace <b>'+txt+'</b>. Al marcar "guardado en Gmail" se reiniciará el contador.';
+  box.style.display='block';
+}
+
+function marcarEnviadoFin(){
+  updFinBtn();
+  if(document.getElementById('chkGmail').checked){
+    marcarBackup();
+  }
+  renderFinBackupInfo();
+}
+
 // ════════════════════════════════════════════════
 // JORNADA — puerta de entrada, fin de jornada y resumen
 // ════════════════════════════════════════════════
@@ -1820,6 +1880,7 @@ function finJornadaClick(){
   if(!j || !j.activa){ toast('No hay jornada activa','#ffc107'); return; }
   document.getElementById('chkExportado').checked=false;
   document.getElementById('chkGmail').checked=false;
+  renderFinBackupInfo();
   document.getElementById('finChecklistView').style.display='block';
   document.getElementById('finResumenView').style.display='none';
   document.getElementById('btnVerResumen').disabled=true;
