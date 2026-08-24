@@ -238,7 +238,7 @@ select option{background:var(--s2)}
 <div class="topbar">
   <div class="logo">
     <div class="logo-icon">🚕</div>
-    <div class="logo-name">Taxi<span>Book</span> Pro <span style="color:var(--muted);font-weight:400;font-size:.55em;font-family:var(--mono)">build 2026-08-24-a</span></div>
+    <div class="logo-name">Taxi<span>Book</span> Pro <span style="color:var(--muted);font-weight:400;font-size:.55em;font-family:var(--mono)">build 2026-08-24-b</span></div>
   </div>
   <div class="week-badge" id="weekBadge"></div>
 </div>
@@ -282,6 +282,7 @@ select option{background:var(--s2)}
       <!-- Recomendación en tiempo real -->
       <div id="bannerRec" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,69,96,.2)">
         <div style="font-size:.55rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">🤖 Próxima zona sugerida</div>
+        <div id="bannerRecMapEl" style="height:150px;border-radius:8px;border:1px solid var(--border);overflow:hidden;margin-bottom:8px;display:none"></div>
         <div id="bannerRecContent" style="font-size:.72rem;color:var(--text);line-height:1.5"></div>
         <div id="bannerRecTime" style="font-size:.55rem;color:var(--muted);font-family:var(--mono);margin-top:3px"></div>
       </div>
@@ -696,6 +697,7 @@ async function startTrip(){
       if(p.coords.accuracy>80) return;
       if(trip.lastLat!==null){ var d=haversine(trip.lastLat,trip.lastLng,nl,nn); if(d<0.3) trip.dist+=d; }
       trip.lastLat=nl; trip.lastLng=nn; trip.endLat=nl; trip.endLng=nn;
+      updateBannerMePos(nl,nn);
       var km=trip.dist;
       document.getElementById('distEl').textContent=km<1?Math.round(km*1000)+' m':km.toFixed(1).replace('.',',')+' km';
       var now=Date.now();
@@ -842,6 +844,7 @@ async function actualizarRecEnViaje(){
   }).join('');
 
   brEl.style.display='block';
+  renderBannerRecMap(lista, miLat, miLng);
   bcEl.innerHTML=html;
   if(btEl) btEl.textContent='Actualizado '+ahora.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})+' · '+bloque.length+'v analizados';
 }
@@ -871,6 +874,48 @@ function resetTrip(){
 
 // Marcar campo ruta como editado por usuario
 document.getElementById('inpRuta').addEventListener('input',function(){ this.dataset.u='1'; });
+
+function renderBannerRecMap(lista, miLat, miLng){
+  var el=document.getElementById('bannerRecMapEl');
+  if(!el) return;
+  var conZonas=lista.filter(function(z){return z.lat&&z.lng;});
+  if(!conZonas.length && !miLat){ el.style.display='none'; return; }
+  el.style.display='block';
+  if(!bannerMap){
+    bannerMap=L.map('bannerRecMapEl',{zoomControl:false,attributionControl:false});
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(bannerMap);
+  }
+  bannerMarkers.forEach(function(m){bannerMap.removeLayer(m);}); bannerMarkers=[]; bannerMeMarker=null;
+  var ics=['🥇','🥈','🥉','4️⃣','5️⃣'];
+  var boundsFit=[];
+  conZonas.forEach(function(z){
+    var idx=lista.indexOf(z);
+    var icon=L.divIcon({html:'<div style="background:var(--s2,#111827);border:2px solid var(--purple,#a855f7);border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:13px">'+(ics[idx]||'📍')+'</div>',iconSize:[26,26],iconAnchor:[13,13],className:''});
+    var m=L.marker([z.lat,z.lng],{icon:icon}).bindPopup('<b>'+z.k+'</b><br>€'+z.prom.toFixed(2)+'/viaje · '+z.n+'v');
+    m.addTo(bannerMap); bannerMarkers.push(m);
+    if(idx===0) boundsFit.push([z.lat,z.lng]);
+  });
+  if(miLat&&miLng){
+    var meIcon=L.divIcon({html:'<div style="background:#00e5ff;border:2px solid #fff;border-radius:50%;width:15px;height:15px;box-shadow:0 0 0 6px rgba(0,229,255,.25)"></div>',iconSize:[15,15],iconAnchor:[8,8],className:''});
+    var mm=L.marker([miLat,miLng],{icon:meIcon}).bindPopup('📍 Tu ubicación');
+    mm.addTo(bannerMap); bannerMarkers.push(mm); bannerMeMarker=mm; boundsFit.push([miLat,miLng]);
+  }
+  if(boundsFit.length<2 && conZonas.length){ boundsFit.push([conZonas[0].lat,conZonas[0].lng]); }
+  if(!boundsFit.length){ el.style.display='none'; return; }
+  if(boundsFit.length===1) bannerMap.setView(boundsFit[0],14);
+  else bannerMap.fitBounds(boundsFit,{padding:[24,24],maxZoom:15});
+  setTimeout(function(){bannerMap.invalidateSize();},150);
+}
+
+// Mueve solo el punto de "mi ubicación" del banner en tiempo real, sin
+// recalcular zonas — esto se llama en cada actualización del GPS del viaje.
+function updateBannerMePos(lat,lng){
+  if(!bannerMap) return;
+  if(bannerMeMarker){
+    bannerMeMarker.setLatLng([lat,lng]);
+    if(!bannerMap.getBounds().contains([lat,lng])){ bannerMap.panTo([lat,lng]); }
+  }
+}
 
 function renderRecMap(lista, miLat, miLng){
   var el=document.getElementById('recMapEl');
@@ -1253,6 +1298,7 @@ function renderSemana(){
 // ════════════════════════════════════════════════
 var map=null, markers=[], selDia=new Date().getDay(), selHora=null;
 var recMap=null, recMarkers=[], recMeMarker=null, recWatchId=null;
+var bannerMap=null, bannerMarkers=[], bannerMeMarker=null;
 var DIAS=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
 var HORAS=['00','01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23'];
 
