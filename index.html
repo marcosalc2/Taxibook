@@ -238,7 +238,7 @@ select option{background:var(--s2)}
 <div class="topbar">
   <div class="logo">
     <div class="logo-icon">🚕</div>
-    <div class="logo-name">Taxi<span>Book</span> Pro</div>
+    <div class="logo-name">Taxi<span>Book</span> Pro <span style="color:var(--muted);font-weight:400;font-size:.55em;font-family:var(--mono)">build 2026-08-24-a</span></div>
   </div>
   <div class="week-badge" id="weekBadge"></div>
 </div>
@@ -351,7 +351,7 @@ select option{background:var(--s2)}
         <div style="font-size:.62rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--purple)">IA · Próxima zona</div>
         <div class="rec-meta" id="recMeta"></div>
       </div>
-      <button onclick="document.getElementById('recPanel').style.display='none'" style="background:none;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer">✕</button>
+      <button onclick="document.getElementById('recPanel').style.display='none'; stopRecWatch();" style="background:none;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer">✕</button>
     </div>
     <div id="recMapEl" style="height:190px;border-radius:10px;border:1px solid var(--border);overflow:hidden;margin-bottom:10px;display:none"></div>
     <div id="recContent"></div>
@@ -894,7 +894,7 @@ function renderRecMap(lista, miLat, miLng){
   if(miLat&&miLng){
     var meIcon=L.divIcon({html:'<div style="background:#00e5ff;border:2px solid #fff;border-radius:50%;width:16px;height:16px;box-shadow:0 0 0 6px rgba(0,229,255,.25)"></div>',iconSize:[16,16],iconAnchor:[8,8],className:''});
     var mm=L.marker([miLat,miLng],{icon:meIcon}).bindPopup('📍 Tu ubicación');
-    mm.addTo(recMap); recMarkers.push(mm); boundsFit.push([miLat,miLng]);
+    mm.addTo(recMap); recMarkers.push(mm); recMeMarker=mm; boundsFit.push([miLat,miLng]);
   }
   // Si la zona nº1 no tiene coordenadas guardadas, usa la primera que sí las tenga
   if(boundsFit.length<2 && conZonas.length){ boundsFit.push([conZonas[0].lat,conZonas[0].lng]); }
@@ -902,6 +902,27 @@ function renderRecMap(lista, miLat, miLng){
   if(boundsFit.length===1) recMap.setView(boundsFit[0],14);
   else recMap.fitBounds(boundsFit,{padding:[28,28],maxZoom:15});
   setTimeout(function(){recMap.invalidateSize();},150);
+}
+
+function startRecWatch(){
+  if(recWatchId!==null || !navigator.geolocation) return;
+  recWatchId=navigator.geolocation.watchPosition(function(p){
+    if(!recMap) return;
+    var lat=p.coords.latitude, lng=p.coords.longitude;
+    if(recMeMarker){
+      recMeMarker.setLatLng([lat,lng]);
+    }else{
+      var meIcon=L.divIcon({html:'<div style="background:#00e5ff;border:2px solid #fff;border-radius:50%;width:16px;height:16px;box-shadow:0 0 0 6px rgba(0,229,255,.25)"></div>',iconSize:[16,16],iconAnchor:[8,8],className:''});
+      recMeMarker=L.marker([lat,lng],{icon:meIcon}).bindPopup('📍 Tu ubicación').addTo(recMap);
+      recMarkers.push(recMeMarker);
+    }
+    if(!recMap.getBounds().contains([lat,lng])){ recMap.panTo([lat,lng]); }
+  }, function(e){}, {enableHighAccuracy:true, maximumAge:4000, timeout:8000});
+}
+
+function stopRecWatch(){
+  if(recWatchId!==null){ navigator.geolocation.clearWatch(recWatchId); recWatchId=null; }
+  recMeMarker=null;
 }
 
 async function showRec(viajeRecien){
@@ -929,23 +950,32 @@ async function showRec(viajeRecien){
   if(viajeRecien){ miLat=viajeRecien.endLat||viajeRecien.startLat||null; miLng=viajeRecien.endLng||viajeRecien.startLng||null; }
   try{ var gp=await getGPS(); miLat=gp.lat; miLng=gp.lng; }catch(e){}
 
-  // ── 4. Seleccionar bloque horario con fallback ───────────────
-  var bloque=todosViajes.filter(function(v){ return diaSemViaje(v)===ahora.getDay()&&Math.abs(v.hora-hora)<=2; });
-  var bLabel=diaNom+' ±2h';
-  if(bloque.length<5){ bloque=todosViajes.filter(function(v){ return Math.abs(v.hora-hora)<=2; }); bLabel='Todos los días ±2h'; }
-  if(bloque.length<5){ bloque=todosViajes.slice(); bLabel='Historial completo'; }
-
-  // ── 5. Agrupar por zona de recogida ─────────────────────────
-  var zonas={};
-  bloque.forEach(function(v){
-    var addr=v.startAddr||'';
-    if(!addr&&!v.startLat) return;
-    var k=addr?addr.split(',')[0].trim():'';
-    if(!k) return;
-    if(!zonas[k]) zonas[k]={n:0,t:0,lat:v.startLat||null,lng:v.startLng||null};
-    zonas[k].n++; zonas[k].t+=v.total;
-    if(!zonas[k].lat&&v.startLat){ zonas[k].lat=v.startLat; zonas[k].lng=v.startLng; }
-  });
+  // ── 4. Seleccionar bloque horario con fallback (por nº de viajes y de zonas distintas) ──
+  function agruparZonas(vs){
+    var z={};
+    vs.forEach(function(v){
+      var addr=v.startAddr||'';
+      if(!addr&&!v.startLat) return;
+      var k=addr?addr.split(',')[0].trim():'';
+      if(!k) return;
+      if(!z[k]) z[k]={n:0,t:0,lat:v.startLat||null,lng:v.startLng||null};
+      z[k].n++; z[k].t+=v.total;
+      if(!z[k].lat&&v.startLat){ z[k].lat=v.startLat; z[k].lng=v.startLng; }
+    });
+    return z;
+  }
+  var candidatos=[
+    {vs:todosViajes.filter(function(v){ return diaSemViaje(v)===ahora.getDay()&&Math.abs(v.hora-hora)<=2; }), label:diaNom+' ±2h'},
+    {vs:todosViajes.filter(function(v){ return Math.abs(v.hora-hora)<=2; }), label:'Todos los días ±2h'},
+    {vs:todosViajes.slice(), label:'Historial completo'}
+  ];
+  var bloque=candidatos[0].vs, bLabel=candidatos[0].label, zonas=agruparZonas(bloque);
+  for(var ci=1; ci<candidatos.length && (bloque.length<5 || Object.keys(zonas).length<5); ci++){
+    var z2=agruparZonas(candidatos[ci].vs);
+    if(candidatos[ci].vs.length>bloque.length && Object.keys(z2).length>=Object.keys(zonas).length){
+      bloque=candidatos[ci].vs; bLabel=candidatos[ci].label; zonas=z2;
+    }
+  }
 
   // ── 6. Calcular score ────────────────────────────────────────
   var lista=Object.entries(zonas).map(function(e){
@@ -953,7 +983,7 @@ async function showRec(viajeRecien){
     var d=(miLat&&z.lat)?haversine(miLat,miLng,z.lat,z.lng):null;
     var prom=z.t/z.n;
     return {k:k,n:z.n,prom:prom,dist:d,score:d!==null?prom/(1+d):prom,lat:z.lat,lng:z.lng};
-  }).sort(function(a,b){ return b.score-a.score; }).slice(0,6);
+  }).sort(function(a,b){ return b.score-a.score; }).slice(0,5);
 
   if(!lista.length){
     cont.innerHTML='<div style="color:var(--muted);font-size:.78rem;text-align:center;padding:10px">Sin direcciones en el historial.<br><span style="font-size:.65rem">Activa GPS al iniciar viaje para ver recomendaciones.</span></div>';
@@ -1005,6 +1035,7 @@ async function showRec(viajeRecien){
   html+='<div id="iaResp" style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:.73rem;line-height:1.6;color:var(--muted2)">'+
     '<span style="color:var(--purple);font-family:var(--mono);font-size:.62rem">🤖 IA analizando...</span></div>';
   cont.innerHTML=html;
+  startRecWatch();
 
   // ── 8. Claude con contexto enriquecido ──────────────────────
   var topTxt=lista.map(function(z){
@@ -1221,7 +1252,7 @@ function renderSemana(){
 // MAPA
 // ════════════════════════════════════════════════
 var map=null, markers=[], selDia=new Date().getDay(), selHora=null;
-var recMap=null, recMarkers=[];
+var recMap=null, recMarkers=[], recMeMarker=null, recWatchId=null;
 var DIAS=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
 var HORAS=['00','01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23'];
 
