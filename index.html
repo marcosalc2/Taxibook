@@ -241,7 +241,7 @@ select option{background:var(--s2)}
 <div class="topbar">
   <div class="logo">
     <div class="logo-icon">🚕</div>
-    <div class="logo-name">Taxi<span>Book</span> Pro <span style="color:var(--muted);font-weight:400;font-size:.55em;font-family:var(--mono)">build 2026-09-06-c</span></div>
+    <div class="logo-name">Taxi<span>Book</span> Pro <span style="color:var(--muted);font-weight:400;font-size:.55em;font-family:var(--mono)">build 2026-09-06-d</span></div>
   </div>
   <div class="week-badge" id="weekBadge"></div>
 </div>
@@ -306,6 +306,7 @@ select option{background:var(--s2)}
       <div class="ct">Iniciar Viaje</div>
       <div class="gps-bar"><div class="dot" id="gpsDot"></div><span id="gpsText">Sin ubicación — pulsa Iniciar</span></div>
       <button class="btn-start" id="btnStart" onclick="startTrip()">🚦 Iniciar Viaje</button>
+      <button type="button" class="btn-sec" id="btnDictadoInicio" style="width:100%;margin-top:8px" onclick="dictarInicio()">🎤 Iniciar por voz</button>
     </div>
     <div class="sg" id="quickStats"></div>
     <div class="card" id="objetivoBar" style="padding:12px 14px;margin-bottom:12px"></div>
@@ -852,25 +853,94 @@ function tickTimer(){
 // ════════════════════════════════════════════════
 // DICTADO POR VOZ (Web Speech API)
 // ════════════════════════════════════════════════
+var NUM_UNI={cero:0,un:1,uno:1,una:1,dos:2,tres:3,cuatro:4,cinco:5,seis:6,siete:7,ocho:8,nueve:9,
+  diez:10,once:11,doce:12,trece:13,catorce:14,quince:15,
+  dieciseis:16,diecisiete:17,dieciocho:18,diecinueve:19,
+  veinte:20,veintiuno:21,veintiuna:21,veintidos:22,veintitres:23,veinticuatro:24,veinticinco:25,veintiseis:26,veintisiete:27,veintiocho:28,veintinueve:29};
+var NUM_DEC={treinta:30,cuarenta:40,cincuenta:50,sesenta:60,setenta:70,ochenta:80,noventa:90};
+var NUM_TODAS=Object.assign({},NUM_UNI,NUM_DEC);
+
+function levDist(a,b){
+  var m=a.length,n=b.length,dp=[],i,j;
+  for(i=0;i<=m;i++) dp[i]=[i];
+  for(j=0;j<=n;j++) dp[0][j]=j;
+  for(i=1;i<=m;i++) for(j=1;j<=n;j++) dp[i][j]=Math.min(dp[i-1][j]+1,dp[i][j-1]+1,dp[i-1][j-1]+(a[i-1]===b[j-1]?0:1));
+  return dp[m][n];
+}
+// Corrige palabras mal transcritas por el micro (p.ej. "quinte"→"quince")
+function corregirNumWord(t){
+  if(NUM_TODAS.hasOwnProperty(t)) return t;
+  if(t.length<4) return null;
+  var mejor=null,mejorD=99;
+  Object.keys(NUM_TODAS).forEach(function(k){ var d=levDist(t,k); if(d<mejorD && d<=1){ mejorD=d; mejor=k; } });
+  return mejor;
+}
+function wordsToNum(tokens){
+  if(!tokens.length) return null;
+  if(tokens.length===1) return NUM_TODAS.hasOwnProperty(tokens[0])?NUM_TODAS[tokens[0]]:null;
+  if(tokens.length===3 && tokens[1]==='y' && NUM_DEC.hasOwnProperty(tokens[0]) && NUM_UNI.hasOwnProperty(tokens[2])) return NUM_DEC[tokens[0]]+NUM_UNI[tokens[2]];
+  return null;
+}
+// Extrae un importe en euros de una frase dictada: admite dígitos (15,50)
+// o números dichos con letras (quince, quince con cincuenta, treinta y cinco...)
+function parseImporteHablado(texto){
+  var norm=texto.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  var md=norm.match(/(\d+)(?:[.,](\d{1,2}))?/);
+  if(md) return parseFloat(md[1]+(md[2]?'.'+md[2]:''));
+  var tokens=norm.replace(/[^a-z\s]/g,' ').split(/\s+/).filter(Boolean).map(function(t){ return corregirNumWord(t)||t; });
+  var sepIdx=-1;
+  for(var i=1;i<tokens.length-1;i++){
+    if((tokens[i]==='con'||tokens[i]==='coma') && NUM_TODAS.hasOwnProperty(tokens[i-1]) && NUM_TODAS.hasOwnProperty(tokens[i+1])){ sepIdx=i; break; }
+  }
+  function grabRun(startIdx,dir){
+    var run=[],i=startIdx;
+    while(i>=0 && i<tokens.length){
+      var t=tokens[i];
+      if(NUM_TODAS.hasOwnProperty(t)){ run.push(t); i+=dir; }
+      else if(t==='y' && run.length && NUM_DEC.hasOwnProperty(run[run.length-1])){ run.push(t); i+=dir; }
+      else break;
+    }
+    if(dir<0) run.reverse();
+    return run;
+  }
+  if(sepIdx>-1){
+    var left=wordsToNum(grabRun(sepIdx-1,-1));
+    var right=wordsToNum(grabRun(sepIdx+1,1));
+    if(left!==null){ var cents=right!==null?(right<10?'0'+right:''+right):'00'; return parseFloat(left+'.'+cents); }
+  }
+  for(var j=0;j<tokens.length;j++){
+    if(NUM_TODAS.hasOwnProperty(tokens[j])){ var n=wordsToNum(grabRun(j,1)); if(n!==null) return n; }
+  }
+  return null;
+}
+
 function dictarViaje(){
+  escucharVoz('btnDictado','🎤 Apuntar por voz', function(texto){ procesarDictado(texto); });
+}
+function dictarInicio(){
+  escucharVoz('btnDictadoInicio','🎤 Iniciar por voz', function(texto){
+    if(/inicio|iniciar|empezar|arrancar|comenzar/.test(texto)){ startTrip(); toast('🎤 Viaje iniciado'); }
+    else toast('🎤 Di "iniciar viaje" para arrancar','#ffc107');
+  });
+}
+function escucharVoz(btnId,textoReposo,onResult){
   var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!SR){ toast('Tu navegador no soporta dictado por voz','#ff4560'); return; }
-  var btn=document.getElementById('btnDictado');
+  var btn=document.getElementById(btnId);
   var rec=new SR();
   rec.lang='es-ES'; rec.interimResults=false; rec.maxAlternatives=1;
-  if(btn){ btn.textContent='🎙️ Escuchando... di algo como "quince euros efectivo"'; btn.disabled=true; }
-  rec.onresult=function(e){ procesarDictado(e.results[0][0].transcript.toLowerCase()); };
+  if(btn){ btn.textContent='🎙️ Escuchando...'; btn.disabled=true; }
+  rec.onresult=function(e){ onResult(e.results[0][0].transcript.toLowerCase()); };
   rec.onerror=function(){ toast('No se ha entendido, inténtalo de nuevo','#ff4560'); };
-  rec.onend=function(){ if(btn){ btn.textContent='🎤 Apuntar por voz'; btn.disabled=false; } };
-  try{ rec.start(); }catch(e){ toast('No se pudo iniciar el micrófono','#ff4560'); if(btn){btn.textContent='🎤 Apuntar por voz';btn.disabled=false;} }
+  rec.onend=function(){ if(btn){ btn.textContent=textoReposo; btn.disabled=false; } };
+  try{ rec.start(); }catch(e){ toast('No se pudo iniciar el micrófono','#ff4560'); if(btn){btn.textContent=textoReposo;btn.disabled=false;} }
 }
 
 function procesarDictado(texto){
   var huboAlgo=false;
-  // Importe: primer número que aparezca (admite coma o punto decimal)
-  var m=texto.match(/(\d+([.,]\d{1,2})?)/);
-  if(m){
-    document.getElementById('inpTotal').value=m[1].replace(',','.');
+  var val=parseImporteHablado(texto);
+  if(val!==null && val>0){
+    document.getElementById('inpTotal').value=val;
     onTotalInput();
     huboAlgo=true;
   }
@@ -886,7 +956,14 @@ function procesarDictado(texto){
     else if(/\bptv\b/.test(texto)) document.querySelector('.chip[data-pl="PTV"]').click();
     else if(/tax[ií]metro/.test(texto)) document.querySelector('.chip[data-pl="Taxímetro"]').click();
   }
-  toast(huboAlgo?'🎤 Entendido: "'+texto+'"':'🎤 No he pillado importe ni pago — repite','#00e096');
+  // Si se pide expresamente terminar/guardar y ya hay importe, guarda directo
+  var quiereGuardar=/finalizar|termina|terminar|guarda|guardar|fin del?\s*viaje|fin viaje/.test(texto);
+  if(quiereGuardar && val!==null && val>0){
+    toast('🎤 Guardando viaje...');
+    saveTrip();
+    return;
+  }
+  toast(huboAlgo?'🎤 Entendido: "'+texto+'"':'🎤 No he pillado el importe — repite despacio','#00e096');
 }
 
 function selPago(el){
