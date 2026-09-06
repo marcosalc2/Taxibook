@@ -172,6 +172,8 @@ select option{background:var(--s2)}
 #autoDetectSlider:before{content:'';position:absolute;height:18px;width:18px;left:3px;top:2px;background:var(--muted);border-radius:50%;transition:.2s}
 #chkAutoDetect:checked + #autoDetectSlider{background:var(--green);border-color:var(--green)}
 #chkAutoDetect:checked + #autoDetectSlider:before{transform:translateX(20px);background:#0a0a0a}
+.kp-btn{background:var(--s3);border:1px solid var(--border2);border-radius:10px;color:var(--text);font-size:1.3rem;font-weight:700;font-family:var(--mono);padding:14px 0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.kp-btn:active{background:var(--acc);color:#000}
 </style>
 </head>
 <body>
@@ -241,7 +243,7 @@ select option{background:var(--s2)}
 <div class="topbar">
   <div class="logo">
     <div class="logo-icon">🚕</div>
-    <div class="logo-name">Taxi<span>Book</span> Pro <span style="color:var(--muted);font-weight:400;font-size:.55em;font-family:var(--mono)">build 2026-09-06-d</span></div>
+    <div class="logo-name">Taxi<span>Book</span> Pro <span style="color:var(--muted);font-weight:400;font-size:.55em;font-family:var(--mono)">build 2026-09-06-f</span></div>
   </div>
   <div class="week-badge" id="weekBadge"></div>
 </div>
@@ -317,27 +319,9 @@ select option{background:var(--s2)}
   <div id="stActive" style="display:none">
     <div class="card">
       <div class="ct">Registrar Viaje</div>
-      <button type="button" id="btnDictado" class="btn-sec" style="width:100%;margin-bottom:12px" onclick="dictarViaje()">🎤 Apuntar por voz</button>
 
-      <div style="margin-bottom:10px"><div class="fg" style="margin-bottom:6px"><label>Método de pago</label></div>
-      <div class="ps">
-        <div class="po sel" data-p="efectivo" onclick="selPago(this)"><span class="pi">💵</span>Efectivo</div>
-        <div class="po" data-p="tarjeta" onclick="selPago(this)"><span class="pi">💳</span>Tarjeta</div>
-        <div class="po" data-p="app" onclick="selPago(this)"><span class="pi">📱</span>App</div>
-      </div></div>
-
-      <div id="grpPlat" style="display:none">
-        <div class="fg" style="margin-bottom:6px"><label>Plataforma</label></div>
-        <div class="chips">
-          <div class="chip on" data-pl="Cabify" onclick="selPlat(this)">Cabify</div>
-          <div class="chip" data-pl="FreeNow" onclick="selPlat(this)">FreeNow</div>
-          <div class="chip" data-pl="PTV" onclick="selPlat(this)">PTV</div>
-          <div class="chip" data-pl="Taxímetro" onclick="selPlat(this)">Taxímetro</div>
-          <div class="chip" data-pl="Otra" onclick="selPlat(this)">Otra</div>
-        </div>
-      </div>
-
-      <div class="fg" style="margin-bottom:6px">
+      <div class="fg" style="margin-bottom:8px">
+        <div id="keypadDisplay" style="font-size:2.1rem;font-weight:800;text-align:right;background:var(--s3);border:1px solid var(--border2);border-radius:10px;padding:8px 14px;margin-bottom:8px;font-family:var(--mono);color:var(--text)">0<span style="color:var(--muted);font-size:1.2rem"> €</span></div>
         <div class="chips" id="chipsTotal">
           <div class="chip" data-amt="5" onclick="chipTotal(this)">5€</div>
           <div class="chip" data-amt="7" onclick="chipTotal(this)">7€</div>
@@ -348,9 +332,42 @@ select option{background:var(--s2)}
           <div class="chip" data-amt="25" onclick="chipTotal(this)">25€</div>
           <div class="chip" data-amt="30" onclick="chipTotal(this)">30€</div>
         </div>
+        <div id="keypadGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px">
+          <button type="button" class="kp-btn" onclick="kpDigit('1')">1</button>
+          <button type="button" class="kp-btn" onclick="kpDigit('2')">2</button>
+          <button type="button" class="kp-btn" onclick="kpDigit('3')">3</button>
+          <button type="button" class="kp-btn" onclick="kpDigit('4')">4</button>
+          <button type="button" class="kp-btn" onclick="kpDigit('5')">5</button>
+          <button type="button" class="kp-btn" onclick="kpDigit('6')">6</button>
+          <button type="button" class="kp-btn" onclick="kpDigit('7')">7</button>
+          <button type="button" class="kp-btn" onclick="kpDigit('8')">8</button>
+          <button type="button" class="kp-btn" onclick="kpDigit('9')">9</button>
+          <button type="button" class="kp-btn" onclick="kpDigit(',')">,</button>
+          <button type="button" class="kp-btn" onclick="kpDigit('0')">0</button>
+          <button type="button" class="kp-btn" onclick="kpBorrar()">⌫</button>
+        </div>
+        <input type="number" id="inpTotal" style="display:none" oninput="onTotalInput()">
       </div>
 
-      <div class="fg"><label>Total (€)</label><input type="number" id="inpTotal" placeholder="0.00" step="0.01" min="0" inputmode="decimal" oninput="onTotalInput()"></div>
+      <div style="margin-bottom:10px"><div class="fg" style="margin-bottom:6px"><label>Método de pago (toca para guardar)</label></div>
+      <div class="ps">
+        <div class="po sel" data-p="efectivo" onclick="selPago(this)"><span class="pi">💵</span>Efectivo</div>
+        <div class="po" data-p="tarjeta" onclick="selPago(this)"><span class="pi">💳</span>Tarjeta</div>
+        <div class="po" data-p="app" onclick="selPago(this)"><span class="pi">📱</span>App</div>
+      </div></div>
+
+      <div id="grpPlat" style="display:none">
+        <div class="fg" style="margin-bottom:6px"><label>Plataforma (toca para guardar)</label></div>
+        <div class="chips">
+          <div class="chip on" data-pl="Cabify" onclick="selPlat(this)">Cabify</div>
+          <div class="chip" data-pl="FreeNow" onclick="selPlat(this)">FreeNow</div>
+          <div class="chip" data-pl="PTV" onclick="selPlat(this)">PTV</div>
+          <div class="chip" data-pl="Taxímetro" onclick="selPlat(this)">Taxímetro</div>
+          <div class="chip" data-pl="Otra" onclick="selPlat(this)">Otra</div>
+        </div>
+      </div>
+
+      <button type="button" id="btnDictado" class="btn-sec" style="width:100%;margin:10px 0" onclick="dictarViaje()">🎤 Apuntar por voz</button>
 
       <div id="masDetallesToggle" style="text-align:center;margin:4px 0 10px" onclick="document.getElementById('masDetalles').style.display='block';this.style.display='none'">
         <span style="font-size:.68rem;color:var(--acc);cursor:pointer">+ Ruta / nota (opcional)</span>
@@ -853,7 +870,7 @@ function tickTimer(){
 // ════════════════════════════════════════════════
 // DICTADO POR VOZ (Web Speech API)
 // ════════════════════════════════════════════════
-var NUM_UNI={cero:0,un:1,uno:1,una:1,dos:2,tres:3,cuatro:4,cinco:5,seis:6,siete:7,ocho:8,nueve:9,
+var NUM_UNI={cero:0,uno:1,una:1,dos:2,tres:3,cuatro:4,cinco:5,seis:6,siete:7,ocho:8,nueve:9,
   diez:10,once:11,doce:12,trece:13,catorce:14,quince:15,
   dieciseis:16,diecisiete:17,dieciocho:18,diecinueve:19,
   veinte:20,veintiuno:21,veintiuna:21,veintidos:22,veintitres:23,veinticuatro:24,veinticinco:25,veintiseis:26,veintisiete:27,veintiocho:28,veintinueve:29};
@@ -875,43 +892,52 @@ function corregirNumWord(t){
   Object.keys(NUM_TODAS).forEach(function(k){ var d=levDist(t,k); if(d<mejorD && d<=1){ mejorD=d; mejor=k; } });
   return mejor;
 }
-function wordsToNum(tokens){
-  if(!tokens.length) return null;
-  if(tokens.length===1) return NUM_TODAS.hasOwnProperty(tokens[0])?NUM_TODAS[tokens[0]]:null;
-  if(tokens.length===3 && tokens[1]==='y' && NUM_DEC.hasOwnProperty(tokens[0]) && NUM_UNI.hasOwnProperty(tokens[2])) return NUM_DEC[tokens[0]]+NUM_UNI[tokens[2]];
-  return null;
-}
-// Extrae un importe en euros de una frase dictada: admite dígitos (15,50)
-// o números dichos con letras (quince, quince con cincuenta, treinta y cinco...)
-function parseImporteHablado(texto){
+function tokenize(texto){
   var norm=texto.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-  var md=norm.match(/(\d+)(?:[.,](\d{1,2}))?/);
-  if(md) return parseFloat(md[1]+(md[2]?'.'+md[2]:''));
-  var tokens=norm.replace(/[^a-z\s]/g,' ').split(/\s+/).filter(Boolean).map(function(t){ return corregirNumWord(t)||t; });
-  var sepIdx=-1;
-  for(var i=1;i<tokens.length-1;i++){
-    if((tokens[i]==='con'||tokens[i]==='coma') && NUM_TODAS.hasOwnProperty(tokens[i-1]) && NUM_TODAS.hasOwnProperty(tokens[i+1])){ sepIdx=i; break; }
-  }
-  function grabRun(startIdx,dir){
-    var run=[],i=startIdx;
-    while(i>=0 && i<tokens.length){
-      var t=tokens[i];
-      if(NUM_TODAS.hasOwnProperty(t)){ run.push(t); i+=dir; }
-      else if(t==='y' && run.length && NUM_DEC.hasOwnProperty(run[run.length-1])){ run.push(t); i+=dir; }
-      else break;
+  return norm.match(/\d+[.,]\d{1,2}|\d+|[a-z]+/g)||[];
+}
+function toValorToken(tok){
+  if(/^\d+[.,]\d{1,2}$/.test(tok)) return parseFloat(tok.replace(',','.'));
+  if(/^\d+$/.test(tok)) return parseInt(tok,10);
+  var w=corregirNumWord(tok);
+  return w?NUM_TODAS[w]:null;
+}
+// Extrae un importe en euros de una frase dictada: admite dígitos ("22,35"),
+// números dichos con letras ("quince", "treinta y cinco") y mezclas
+// ("22 con 35"), aunque el "con"/"coma" no esté pegado al número (p.ej.
+// "veintidós euros con treinta y cinco céntimos"). Ignora el artículo "un"
+// ("un viaje") para no confundirlo con el número 1.
+function parseImporteHablado(texto){
+  var tokens=tokenize(texto);
+  var entries=[]; // {value, start, end}
+  for(var i=0;i<tokens.length;i++){
+    var t=tokens[i];
+    if(t==='un') continue;
+    var v=toValorToken(t);
+    if(v===null) continue;
+    var wCorr=corregirNumWord(t);
+    if(wCorr && NUM_DEC.hasOwnProperty(wCorr) && tokens[i+1]==='y' && i+2<tokens.length){
+      var v2=toValorToken(tokens[i+2]);
+      var w2=corregirNumWord(tokens[i+2]);
+      if(v2!==null && w2 && NUM_UNI.hasOwnProperty(w2)){
+        entries.push({value:v+v2,start:i,end:i+2});
+        i+=2; continue;
+      }
     }
-    if(dir<0) run.reverse();
-    return run;
+    entries.push({value:v,start:i,end:i});
   }
-  if(sepIdx>-1){
-    var left=wordsToNum(grabRun(sepIdx-1,-1));
-    var right=wordsToNum(grabRun(sepIdx+1,1));
-    if(left!==null){ var cents=right!==null?(right<10?'0'+right:''+right):'00'; return parseFloat(left+'.'+cents); }
+  var conIdxs=[];
+  tokens.forEach(function(t,idx){ if(t==='con'||t==='coma') conIdxs.push(idx); });
+  for(var k=0;k<conIdxs.length;k++){
+    var ci=conIdxs[k], left=null, right=null;
+    for(var a=entries.length-1;a>=0;a--){ if(entries[a].end<ci){ left=entries[a]; break; } }
+    for(var b=0;b<entries.length;b++){ if(entries[b].start>ci){ right=entries[b]; break; } }
+    if(left && right){
+      var centStr=right.value<10?('0'+right.value):(''+Math.round(right.value));
+      return parseFloat(left.value+'.'+centStr);
+    }
   }
-  for(var j=0;j<tokens.length;j++){
-    if(NUM_TODAS.hasOwnProperty(tokens[j])){ var n=wordsToNum(grabRun(j,1)); if(n!==null) return n; }
-  }
-  return null;
+  return entries.length?entries[0].value:null;
 }
 
 function dictarViaje(){
@@ -966,12 +992,23 @@ function procesarDictado(texto){
   toast(huboAlgo?'🎤 Entendido: "'+texto+'"':'🎤 No he pillado el importe — repite despacio','#00e096');
 }
 
+var guardandoViaje=false;
+
 function selPago(el){
   document.querySelectorAll('.po').forEach(function(o){ o.classList.remove('sel'); });
   el.classList.add('sel'); pago=el.dataset.p;
   document.getElementById('grpPlat').style.display=pago==='app'?'':'none';
+  if(pago!=='app'){
+    var total=parseFloat(document.getElementById('inpTotal').value);
+    if(total>0) saveTrip();
+  }
 }
-function selPlat(el){ document.querySelectorAll('.chip[data-pl]').forEach(function(c){ c.classList.remove('on'); }); el.classList.add('on'); plat=el.dataset.pl; }
+function selPlat(el){
+  document.querySelectorAll('.chip[data-pl]').forEach(function(c){ c.classList.remove('on'); });
+  el.classList.add('on'); plat=el.dataset.pl;
+  var total=parseFloat(document.getElementById('inpTotal').value);
+  if(total>0) saveTrip();
+}
 
 // Importe rápido: un toque rellena el Total
 function chipTotal(el){
@@ -984,11 +1021,40 @@ function onTotalInput(){
   document.querySelectorAll('#chipsTotal .chip').forEach(function(c){
     c.classList.toggle('on', c.dataset.amt===document.getElementById('inpTotal').value);
   });
+  kpRender();
+}
+
+// Teclado numérico grande (más rápido que el teclado del móvil)
+function kpRender(){
+  var v=document.getElementById('inpTotal').value;
+  var txt=(v===''||v===null||v===undefined)?'0':v.replace('.',',');
+  document.getElementById('keypadDisplay').innerHTML=txt+'<span style="color:var(--muted);font-size:1.2rem"> €</span>';
+}
+function kpDigit(d){
+  var el=document.getElementById('inpTotal');
+  var v=el.value||'';
+  if(d===','){
+    if(v.indexOf('.')>-1) return;
+    v=(v===''?'0':v)+'.';
+  }else{
+    var parts=v.split('.');
+    if(parts.length===2 && parts[1].length>=2) return;
+    if(v==='0') v=d; else v+=d;
+  }
+  el.value=v;
+  onTotalInput();
+}
+function kpBorrar(){
+  var el=document.getElementById('inpTotal');
+  el.value=(el.value||'').slice(0,-1);
+  onTotalInput();
 }
 
 async function saveTrip(){
+  if(guardandoViaje) return;
   var total=parseFloat(document.getElementById('inpTotal').value);
   if(!total||total<=0){ toast('⚠️ Introduce el importe','#ff4560'); return; }
+  guardandoViaje=true;
   var btn=document.getElementById('btnSave'); btn.disabled=true; btn.textContent='⏳ Guardando...';
   var now=new Date();
   var v={
@@ -1105,6 +1171,7 @@ async function actualizarRecEnViaje(){
 }
 
 function resetTrip(){
+  guardandoViaje=false;
   clearInterval(timerInt);
   if(recInt!==null){ clearInterval(recInt); recInt=null; }
   if(watchId!==null){ navigator.geolocation.clearWatch(watchId); watchId=null; }
@@ -1117,6 +1184,7 @@ function resetTrip(){
   document.getElementById('distEl').textContent='0 m';
   var br=document.getElementById('bannerRec'); if(br) br.style.display='none';
   ['inpTotal','inpRuta','inpNota'].forEach(function(id){ var e=document.getElementById(id); if(e){e.value='';delete e.dataset.u;} });
+  kpRender();
   document.querySelectorAll('#chipsTotal .chip').forEach(function(c){ c.classList.remove('on'); });
   document.getElementById('masDetalles').style.display='none';
   document.getElementById('masDetallesToggle').style.display='block';
