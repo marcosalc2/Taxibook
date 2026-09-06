@@ -172,7 +172,7 @@ select option{background:var(--s2)}
 #autoDetectSlider:before{content:'';position:absolute;height:18px;width:18px;left:3px;top:2px;background:var(--muted);border-radius:50%;transition:.2s}
 #chkAutoDetect:checked + #autoDetectSlider{background:var(--green);border-color:var(--green)}
 #chkAutoDetect:checked + #autoDetectSlider:before{transform:translateX(20px);background:#0a0a0a}
-.kp-btn{background:var(--s3);border:1px solid var(--border2);border-radius:10px;color:var(--text);font-size:1.3rem;font-weight:700;font-family:var(--mono);padding:14px 0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.kp-btn{background:var(--s3);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-size:1.05rem;font-weight:700;font-family:var(--mono);padding:9px 0;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .kp-btn:active{background:var(--acc);color:#000}
 </style>
 </head>
@@ -243,7 +243,7 @@ select option{background:var(--s2)}
 <div class="topbar">
   <div class="logo">
     <div class="logo-icon">🚕</div>
-    <div class="logo-name">Taxi<span>Book</span> Pro <span style="color:var(--muted);font-weight:400;font-size:.55em;font-family:var(--mono)">build 2026-09-06-g</span></div>
+    <div class="logo-name">Taxi<span>Book</span> Pro <span style="color:var(--muted);font-weight:400;font-size:.55em;font-family:var(--mono)">build 2026-09-06-i</span></div>
   </div>
   <div class="week-badge" id="weekBadge"></div>
 </div>
@@ -321,7 +321,7 @@ select option{background:var(--s2)}
       <div class="ct">Registrar Viaje</div>
 
       <div class="fg" style="margin-bottom:8px">
-        <div id="keypadDisplay" style="font-size:2.1rem;font-weight:800;text-align:right;background:var(--s3);border:1px solid var(--border2);border-radius:10px;padding:8px 14px;margin-bottom:8px;font-family:var(--mono);color:var(--text)">0<span style="color:var(--muted);font-size:1.2rem"> €</span></div>
+        <div id="keypadDisplay" style="font-size:1.7rem;font-weight:800;text-align:right;background:var(--s3);border:1px solid var(--border2);border-radius:10px;padding:6px 12px;margin-bottom:6px;font-family:var(--mono);color:var(--text)">0<span style="color:var(--muted);font-size:1.1rem"> €</span></div>
         <div class="chips" id="chipsTotal">
           <div class="chip" data-amt="5" onclick="chipTotal(this)">5€</div>
           <div class="chip" data-amt="7" onclick="chipTotal(this)">7€</div>
@@ -332,7 +332,7 @@ select option{background:var(--s2)}
           <div class="chip" data-amt="25" onclick="chipTotal(this)">25€</div>
           <div class="chip" data-amt="30" onclick="chipTotal(this)">30€</div>
         </div>
-        <div id="keypadGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px">
+        <div id="keypadGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-top:6px">
           <button type="button" class="kp-btn" onclick="kpDigit('1')">1</button>
           <button type="button" class="kp-btn" onclick="kpDigit('2')">2</button>
           <button type="button" class="kp-btn" onclick="kpDigit('3')">3</button>
@@ -342,8 +342,8 @@ select option{background:var(--s2)}
           <button type="button" class="kp-btn" onclick="kpDigit('7')">7</button>
           <button type="button" class="kp-btn" onclick="kpDigit('8')">8</button>
           <button type="button" class="kp-btn" onclick="kpDigit('9')">9</button>
-          <button type="button" class="kp-btn" onclick="kpDigit(',')">,</button>
           <button type="button" class="kp-btn" onclick="kpDigit('0')">0</button>
+          <button type="button" class="kp-btn" onclick="kpDigit(',')">,</button>
           <button type="button" class="kp-btn" onclick="kpBorrar()">⌫</button>
         </div>
         <input type="number" id="inpTotal" style="display:none" oninput="onTotalInput()">
@@ -358,7 +358,8 @@ select option{background:var(--s2)}
 
 
 
-      <button type="button" id="btnDictado" class="btn-sec" style="width:100%;margin:10px 0" onclick="dictarViaje()">🎤 Apuntar por voz</button>
+      <button type="button" id="btnDictado" class="btn-sec" style="width:100%;margin:10px 0" onclick="finalizarPorVoz()">🎤 Terminar viaje por voz</button>
+      <div id="voiceQuestion" style="display:none;text-align:center;font-size:1rem;font-weight:700;color:var(--acc);background:var(--s3);border:1px solid var(--acc);border-radius:10px;padding:10px;margin:-2px 0 10px"></div>
 
       <div id="masDetallesToggle" style="text-align:center;margin:4px 0 10px" onclick="document.getElementById('masDetalles').style.display='block';this.style.display='none'">
         <span style="font-size:.68rem;color:var(--acc);cursor:pointer">+ Ruta / nota (opcional)</span>
@@ -931,9 +932,6 @@ function parseImporteHablado(texto){
   return entries.length?entries[0].value:null;
 }
 
-function dictarViaje(){
-  escucharVoz('btnDictado','🎤 Apuntar por voz', function(texto){ procesarDictado(texto); });
-}
 function dictarInicio(){
   escucharVoz('btnDictadoInicio','🎤 Iniciar por voz', function(texto){
     if(/inicio|iniciar|empezar|arrancar|comenzar/.test(texto)){ startTrip(); toast('🎤 Viaje iniciado'); }
@@ -953,30 +951,92 @@ function escucharVoz(btnId,textoReposo,onResult){
   try{ rec.start(); }catch(e){ toast('No se pudo iniciar el micrófono','#ff4560'); if(btn){btn.textContent=textoReposo;btn.disabled=false;} }
 }
 
-function procesarDictado(texto){
-  var huboAlgo=false;
-  var val=parseImporteHablado(texto);
-  if(val!==null && val>0){
-    document.getElementById('inpTotal').value=val;
-    onTotalInput();
-    huboAlgo=true;
+// Habla un texto por voz y avisa (callback) cuando ha terminado de decirlo
+function hablar(texto,cb){
+  var yaLlamado=false;
+  function terminar(){ if(yaLlamado) return; yaLlamado=true; if(cb) cb(); }
+  if(!window.speechSynthesis){ terminar(); return; }
+  try{
+    speechSynthesis.cancel();
+    var u=new SpeechSynthesisUtterance(texto);
+    u.lang='es-ES';
+    u.onend=terminar;
+    u.onerror=terminar;
+    speechSynthesis.speak(u);
+    // Margen de seguridad: en algunos móviles la síntesis no avisa al
+    // terminar, así que si en 3s no ha llamado a terminar(), seguimos igual.
+    setTimeout(terminar, 3000);
+  }catch(e){ terminar(); }
+}
+
+// Escucha una única respuesta hablada (sin frase de reposo fija en el botón)
+function escucharUnaVez(onResult,onFail){
+  var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){ toast('Tu navegador no soporta dictado por voz','#ff4560'); if(onFail) onFail(); return; }
+  var rec=new SR();
+  rec.lang='es-ES'; rec.interimResults=false; rec.maxAlternatives=1;
+  rec.onresult=function(e){ onResult(e.results[0][0].transcript.toLowerCase()); };
+  rec.onerror=function(){ toast('No se ha entendido','#ff4560'); if(onFail) onFail(); };
+  try{ rec.start(); }catch(e){ toast('No se pudo iniciar el micrófono','#ff4560'); if(onFail) onFail(); }
+}
+
+// Diálogo guiado para terminar el viaje: pregunta el importe, luego el
+// método de pago, y al responder ambas cosas guarda solo (sin más toques).
+// La pregunta se muestra siempre en pantalla (además de intentar decirla
+// en voz alta), porque la síntesis de voz no funciona igual en todos los
+// móviles.
+function finalizarPorVoz(){
+  var btn=document.getElementById('btnDictado');
+  var q=document.getElementById('voiceQuestion');
+  function setBtn(t){ if(btn) btn.textContent=t; }
+  function setPregunta(t){ if(q){ q.style.display=t?'block':'none'; q.textContent=t; } }
+  function resetBtn(){ if(btn){ btn.textContent='🎤 Terminar viaje por voz'; btn.disabled=false; } setPregunta(''); }
+  if(btn) btn.disabled=true;
+
+  function preguntarImporte(){
+    setBtn('🗣️ Preguntando importe...');
+    setPregunta('❓ ¿Importe?');
+    hablar('¿Importe?', function(){
+      setBtn('🎙️ Escuchando importe...');
+      setPregunta('🎙️ Di el importe (ej: "veinte euros")');
+      escucharUnaVez(function(texto){
+        var val=parseImporteHablado(texto);
+        if(val===null||val<=0){
+          toast('🎤 No he entendido el importe, repetimos','#ffc107');
+          preguntarImporte();
+          return;
+        }
+        document.getElementById('inpTotal').value=val;
+        onTotalInput();
+        preguntarMetodo();
+      }, resetBtn);
+    });
   }
-  // Método de pago
-  if(/\befectivo\b/.test(texto)){
-    var pe=document.querySelector('.po[data-p="efectivo"]'); if(pe){pe.click(); huboAlgo=true;}
-  }else if(/\btarjeta\b/.test(texto)){
-    var pt=document.querySelector('.po[data-p="tarjeta"]'); if(pt){pt.click(); huboAlgo=true;}
-  }else if(/cabify|free\s?now|\bptv\b|tax[ií]metro|\bapp\b/.test(texto)){
-    var pa=document.querySelector('.po[data-p="app"]'); if(pa){pa.click(); huboAlgo=true;}
+
+  function preguntarMetodo(){
+    setBtn('🗣️ Preguntando método de pago...');
+    setPregunta('❓ ¿Método de pago?');
+    hablar('¿Método de pago?', function(){
+      setBtn('🎙️ Escuchando método de pago...');
+      setPregunta('🎙️ Di el método (efectivo / tarjeta / app)');
+      escucharUnaVez(function(texto){
+        var m=null;
+        if(/efectivo/.test(texto)) m='efectivo';
+        else if(/tarjeta/.test(texto)) m='tarjeta';
+        else if(/app|cabify|free\s?now|\bptv\b|tax[ií]metro/.test(texto)) m='app';
+        if(!m){
+          toast('🎤 No he entendido el método de pago, repetimos','#ffc107');
+          preguntarMetodo();
+          return;
+        }
+        var el=document.querySelector('.po[data-p="'+m+'"]');
+        if(el) el.click(); // esto ya guarda el viaje y vuelve a la pantalla de Iniciar Viaje
+        resetBtn();
+      }, resetBtn);
+    });
   }
-  // Si se pide expresamente terminar/guardar y ya hay importe, guarda directo
-  var quiereGuardar=/finalizar|termina|terminar|guarda|guardar|fin del?\s*viaje|fin viaje/.test(texto);
-  if(quiereGuardar && val!==null && val>0){
-    toast('🎤 Guardando viaje...');
-    saveTrip();
-    return;
-  }
-  toast(huboAlgo?'🎤 Entendido: "'+texto+'"':'🎤 No he pillado el importe — repite despacio','#00e096');
+
+  preguntarImporte();
 }
 
 var guardandoViaje=false;
@@ -1006,7 +1066,7 @@ function onTotalInput(){
 function kpRender(){
   var v=document.getElementById('inpTotal').value;
   var txt=(v===''||v===null||v===undefined)?'0':v.replace('.',',');
-  document.getElementById('keypadDisplay').innerHTML=txt+'<span style="color:var(--muted);font-size:1.2rem"> €</span>';
+  document.getElementById('keypadDisplay').innerHTML=txt+'<span style="color:var(--muted);font-size:1.1rem"> €</span>';
 }
 function kpDigit(d){
   var el=document.getElementById('inpTotal');
