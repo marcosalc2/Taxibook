@@ -169,6 +169,9 @@ select option{background:var(--s2)}
 .backup-banner{padding:9px 16px;font-size:.74rem;display:flex;align-items:center;gap:8px}
 .backup-banner.warn{background:linear-gradient(135deg,rgba(255,193,7,.18),rgba(255,193,7,.05));border-bottom:1px solid rgba(255,193,7,.35);color:#ffd873}
 .backup-banner.crit{background:linear-gradient(135deg,rgba(255,69,96,.2),rgba(255,69,96,.06));border-bottom:1px solid rgba(255,69,96,.4);color:#ff8ba0}
+#autoDetectSlider:before{content:'';position:absolute;height:18px;width:18px;left:3px;top:2px;background:var(--muted);border-radius:50%;transition:.2s}
+#chkAutoDetect:checked + #autoDetectSlider{background:var(--green);border-color:var(--green)}
+#chkAutoDetect:checked + #autoDetectSlider:before{transform:translateX(20px);background:#0a0a0a}
 </style>
 </head>
 <body>
@@ -238,7 +241,7 @@ select option{background:var(--s2)}
 <div class="topbar">
   <div class="logo">
     <div class="logo-icon">🚕</div>
-    <div class="logo-name">Taxi<span>Book</span> Pro <span style="color:var(--muted);font-weight:400;font-size:.55em;font-family:var(--mono)">build 2026-08-24-b</span></div>
+    <div class="logo-name">Taxi<span>Book</span> Pro <span style="color:var(--muted);font-weight:400;font-size:.55em;font-family:var(--mono)">build 2026-09-06-c</span></div>
   </div>
   <div class="week-badge" id="weekBadge"></div>
 </div>
@@ -270,6 +273,14 @@ select option{background:var(--s2)}
   </div>
 
   <!-- Banner viaje activo -->
+  <div id="avisoAutoDetect" style="display:none;position:fixed;top:10px;left:10px;right:10px;z-index:9999;background:#12203f;border:2px solid var(--acc);border-radius:12px;padding:12px 14px;box-shadow:0 4px 20px rgba(0,0,0,.5)">
+    <div style="font-size:.8rem;font-weight:700;margin-bottom:8px;color:var(--text)">🚕 Parece que estás circulando — ¿has cogido un cliente?</div>
+    <div style="display:flex;gap:8px">
+      <button onclick="confirmarAutoStart()" style="flex:1;background:var(--green);border:none;border-radius:8px;padding:9px;font-weight:700;color:#000;font-size:.75rem">✅ Iniciar viaje</button>
+      <button onclick="descartarAutoDetect()" style="flex:1;background:var(--s3);border:1px solid var(--border);border-radius:8px;padding:9px;font-weight:700;color:var(--muted);font-size:.75rem">No, ignorar</button>
+    </div>
+  </div>
+
   <div class="banner" id="banner" style="display:none">
     <span style="font-size:1.3rem">🔴</span>
     <div style="flex:1;min-width:0">
@@ -305,6 +316,7 @@ select option{background:var(--s2)}
   <div id="stActive" style="display:none">
     <div class="card">
       <div class="ct">Registrar Viaje</div>
+      <button type="button" id="btnDictado" class="btn-sec" style="width:100%;margin-bottom:12px" onclick="dictarViaje()">🎤 Apuntar por voz</button>
 
       <div style="margin-bottom:10px"><div class="fg" style="margin-bottom:6px"><label>Método de pago</label></div>
       <div class="ps">
@@ -324,20 +336,30 @@ select option{background:var(--s2)}
         </div>
       </div>
 
-      <div class="fr">
-        <div class="fg"><label>Total (€)</label><input type="number" id="inpTotal" placeholder="0.00" step="0.01" min="0" inputmode="decimal" oninput="calcCambio()"></div>
-        <div class="fg" id="grpEfectivo"><label>Cobrado (€)</label><input type="number" id="inpEfectivo" placeholder="0.00" step="0.01" min="0" inputmode="decimal" oninput="calcCambio()"></div>
+      <div class="fg" style="margin-bottom:6px">
+        <div class="chips" id="chipsTotal">
+          <div class="chip" data-amt="5" onclick="chipTotal(this)">5€</div>
+          <div class="chip" data-amt="7" onclick="chipTotal(this)">7€</div>
+          <div class="chip" data-amt="10" onclick="chipTotal(this)">10€</div>
+          <div class="chip" data-amt="12" onclick="chipTotal(this)">12€</div>
+          <div class="chip" data-amt="15" onclick="chipTotal(this)">15€</div>
+          <div class="chip" data-amt="20" onclick="chipTotal(this)">20€</div>
+          <div class="chip" data-amt="25" onclick="chipTotal(this)">25€</div>
+          <div class="chip" data-amt="30" onclick="chipTotal(this)">30€</div>
+        </div>
       </div>
 
-      <div class="cambio-box" id="cambioBox" style="display:none">
-        <span>💰 Cambio a devolver</span><span id="cambioAmt" style="font-weight:700"></span>
-      </div>
+      <div class="fg"><label>Total (€)</label><input type="number" id="inpTotal" placeholder="0.00" step="0.01" min="0" inputmode="decimal" oninput="onTotalInput()"></div>
 
-      <div class="fg"><label>Por donde paso <span style="font-weight:400;text-transform:none;letter-spacing:0">(GPS auto)</span></label>
-        <input type="text" id="inpRuta" placeholder="Ej: Gran Vía, Atocha...">
+      <div id="masDetallesToggle" style="text-align:center;margin:4px 0 10px" onclick="document.getElementById('masDetalles').style.display='block';this.style.display='none'">
+        <span style="font-size:.68rem;color:var(--acc);cursor:pointer">+ Ruta / nota (opcional)</span>
       </div>
-
-      <div class="fg"><label>Nota (opcional)</label><input type="text" id="inpNota" placeholder="Aeropuerto, evento..."></div>
+      <div id="masDetalles" style="display:none">
+        <div class="fg"><label>Por donde paso <span style="font-weight:400;text-transform:none;letter-spacing:0">(GPS auto)</span></label>
+          <input type="text" id="inpRuta" placeholder="Ej: Gran Vía, Atocha...">
+        </div>
+        <div class="fg"><label>Nota (opcional)</label><input type="text" id="inpNota" placeholder="Aeropuerto, evento..."></div>
+      </div>
 
       <button class="btn-save" id="btnSave" onclick="saveTrip()">✅ Guardar Viaje</button>
       <button class="btn-cancel" onclick="cancelTrip()">✖ Cancelar viaje</button>
@@ -443,6 +465,17 @@ select option{background:var(--s2)}
         <span id="lblObjetivo" style="font-family:var(--mono);font-size:.9rem;color:var(--green);min-width:65px;text-align:right"></span>
       </div>
       <div style="font-size:.6rem;color:var(--muted);margin-top:3px">Umbral verde: ≥objetivo/días×días_trabajados · Rojo: &lt;80%</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="ct">🚕 Auto-detección de viaje</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div style="font-size:.72rem;color:var(--muted2);line-height:1.5;flex:1">Si circulas de forma sostenida (~1 min) sin haber pulsado "Iniciar Viaje", te avisa con vibración por si se te olvidó. Tolera paradas cortas (semáforos).</div>
+      <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0">
+        <input type="checkbox" id="chkAutoDetect" onchange="toggleAutoDetect(this.checked)" style="opacity:0;width:0;height:0">
+        <span id="autoDetectSlider" style="position:absolute;inset:0;background:var(--s3);border:1px solid var(--border2);border-radius:24px;transition:.2s;cursor:pointer" onclick="document.getElementById('chkAutoDetect').click()"></span>
+      </label>
     </div>
   </div>
 
@@ -611,6 +644,70 @@ function haversine(la1,ln1,la2,ln2){ var R=6371,dL=(la2-la1)*Math.PI/180,dN=(ln2
 document.getElementById('weekBadge').textContent = weekLabel(getMon(today()));
 document.getElementById('filtFecha').value = today();
 
+// ════════════════════════════════════════════════
+// AUTO-DETECCIÓN: avisar si se circula sin viaje iniciado
+// ════════════════════════════════════════════════
+var UMBRAL_MOV_KMH=15, UMBRAL_PARADO_KMH=6, SOSTENIDO_MS=60000, GRACIA_PARADA_MS=20000, COOLDOWN_MS=10*60000;
+var sinViajeWatchId=null, movStart=null, paradoDesde=null, avisoActivo=false, ultimoAvisoTs=0;
+
+function autoDetectHabilitado(){ return localStorage.getItem('taxibook_autodetect')!=='0'; }
+
+function toggleAutoDetect(on){
+  localStorage.setItem('taxibook_autodetect', on?'1':'0');
+  if(on){
+    var j=loadJornada();
+    if(j&&j.activa&&j.fecha===today()&&!trip) iniciarVigilanciaSinViaje();
+    toast('🚕 Auto-detección activada');
+  }else{
+    detenerVigilanciaSinViaje();
+    document.getElementById('avisoAutoDetect').style.display='none';
+    toast('Auto-detección desactivada','#ffc107');
+  }
+}
+
+function iniciarVigilanciaSinViaje(){
+  if(sinViajeWatchId!==null || !navigator.geolocation || !autoDetectHabilitado()) return;
+  sinViajeWatchId=navigator.geolocation.watchPosition(function(p){
+    if(trip) return; // ya hay un viaje en marcha, no aplica
+    var kmh=(p.coords.speed!==null&&p.coords.speed!==undefined&&!isNaN(p.coords.speed))?p.coords.speed*3.6:0;
+    if(kmh>=UMBRAL_MOV_KMH){
+      paradoDesde=null;
+      if(movStart===null) movStart=Date.now();
+      if(!avisoActivo && (Date.now()-movStart)>=SOSTENIDO_MS && (Date.now()-ultimoAvisoTs)>COOLDOWN_MS){
+        mostrarAvisoAutoDetect();
+      }
+    }else if(kmh<UMBRAL_PARADO_KMH){
+      // Tolera paradas cortas (semáforos, stop) sin reiniciar el contador;
+      // solo si llevas más de 20s parado se considera que ya no vas conduciendo.
+      if(paradoDesde===null) paradoDesde=Date.now();
+      else if(Date.now()-paradoDesde>GRACIA_PARADA_MS){ movStart=null; paradoDesde=null; }
+    }
+  },function(){},{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+}
+
+function detenerVigilanciaSinViaje(){
+  if(sinViajeWatchId!==null){ navigator.geolocation.clearWatch(sinViajeWatchId); sinViajeWatchId=null; }
+  movStart=null; paradoDesde=null;
+}
+
+function mostrarAvisoAutoDetect(){
+  avisoActivo=true;
+  document.getElementById('avisoAutoDetect').style.display='block';
+  if(navigator.vibrate) navigator.vibrate([200,100,200]);
+}
+
+function confirmarAutoStart(){
+  document.getElementById('avisoAutoDetect').style.display='none';
+  avisoActivo=false; movStart=null; ultimoAvisoTs=Date.now();
+  nav('viaje', document.querySelectorAll('.nav-btn')[0]);
+  startTrip();
+}
+
+function descartarAutoDetect(){
+  document.getElementById('avisoAutoDetect').style.display='none';
+  avisoActivo=false; movStart=null; ultimoAvisoTs=Date.now();
+}
+
 function nav(name, btn){
   document.querySelectorAll('.sec').forEach(function(s){ s.classList.remove('active'); });
   document.querySelectorAll('.nav-btn').forEach(function(b){ b.classList.remove('active'); });
@@ -658,6 +755,11 @@ async function reverseGeo(lat,lng){
 // ESTADO DEL VIAJE
 // ════════════════════════════════════════════════
 var trip=null, timerInt=null, watchId=null, recInt=null, pago='efectivo', plat='Cabify';
+var TRIP_KEY='taxibook_trip_activo';
+function saveTripState(){
+  if(!trip){ try{localStorage.removeItem(TRIP_KEY);}catch(e){} return; }
+  try{ localStorage.setItem(TRIP_KEY, JSON.stringify(trip)); }catch(e){}
+}
 
 async function startTrip(){
   var j=loadJornada();
@@ -678,6 +780,8 @@ async function startTrip(){
     document.getElementById('gpsText').textContent='Sin GPS ('+e+')';
   }
   trip={t0:Date.now(),lat:lat,lng:lng,addr:addr,dist:0,lastLat:lat,lastLng:lng,endLat:null,endLng:null,endAddr:''};
+  saveTripState();
+  detenerVigilanciaSinViaje();
   document.getElementById('stIdle').style.display='none';
   document.getElementById('stActive').style.display='block';
   document.getElementById('banner').style.display='flex';
@@ -689,23 +793,54 @@ async function startTrip(){
   recInt=setInterval(function(){ actualizarRecEnViaje(); }, 5*60*1000);
   // Primera recomendación a los 30 segundos de iniciar
   setTimeout(function(){ if(trip) actualizarRecEnViaje(); }, 30000);
-  if(navigator.geolocation && lat!==null){
-    var lastRev=0;
-    watchId=navigator.geolocation.watchPosition(function(p){
-      if(!trip) return;
-      var nl=p.coords.latitude,nn=p.coords.longitude;
-      if(p.coords.accuracy>80) return;
-      if(trip.lastLat!==null){ var d=haversine(trip.lastLat,trip.lastLng,nl,nn); if(d<0.3) trip.dist+=d; }
-      trip.lastLat=nl; trip.lastLng=nn; trip.endLat=nl; trip.endLng=nn;
-      updateBannerMePos(nl,nn);
-      var km=trip.dist;
-      document.getElementById('distEl').textContent=km<1?Math.round(km*1000)+' m':km.toFixed(1).replace('.',',')+' km';
-      var now=Date.now();
-      if(now-lastRev>30000){ lastRev=now;
-        reverseGeo(nl,nn).then(function(a){ trip.endAddr=a; var ir=document.getElementById('inpRuta'); if(ir&&!ir.dataset.u) ir.value=a; });
-      }
-    },function(){},{enableHighAccuracy:true,maximumAge:3000,timeout:15000});
+  iniciarSeguimientoGPS();
+}
+
+function iniciarSeguimientoGPS(){
+  if(!navigator.geolocation) return;
+  var lastRev=0;
+  watchId=navigator.geolocation.watchPosition(function(p){
+    if(!trip) return;
+    var nl=p.coords.latitude,nn=p.coords.longitude;
+    if(p.coords.accuracy>80) return;
+    if(trip.lastLat!==null&&trip.lastLat!==undefined){ var d=haversine(trip.lastLat,trip.lastLng,nl,nn); if(d<0.3) trip.dist+=d; }
+    trip.lastLat=nl; trip.lastLng=nn; trip.endLat=nl; trip.endLng=nn;
+    updateBannerMePos(nl,nn);
+    var km=trip.dist;
+    document.getElementById('distEl').textContent=km<1?Math.round(km*1000)+' m':km.toFixed(1).replace('.',',')+' km';
+    saveTripState();
+    var now=Date.now();
+    if(now-lastRev>30000){ lastRev=now;
+      reverseGeo(nl,nn).then(function(a){ trip.endAddr=a; var ir=document.getElementById('inpRuta'); if(ir&&!ir.dataset.u) ir.value=a; saveTripState(); });
+    }
+  },function(){},{enableHighAccuracy:true,maximumAge:3000,timeout:15000});
+}
+
+// Si la app se recarga (p.ej. al desbloquear el móvil) con un viaje en
+// marcha, lo recuperamos desde localStorage en vez de perderlo.
+function restaurarViajeSiHay(){
+  var raw; try{ raw=localStorage.getItem(TRIP_KEY); }catch(e){ raw=null; }
+  if(!raw) return;
+  var saved; try{ saved=JSON.parse(raw); }catch(e){ saved=null; }
+  if(!saved || !saved.t0){ try{localStorage.removeItem(TRIP_KEY);}catch(e){} return; }
+  var horas=(Date.now()-saved.t0)/3600000;
+  if(horas>12){
+    try{localStorage.removeItem(TRIP_KEY);}catch(e){}
+    toast('⚠️ Había un viaje sin cerrar de hace '+Math.round(horas)+'h — se ha descartado','#ff4560');
+    return;
   }
+  trip=saved;
+  document.getElementById('stIdle').style.display='none';
+  document.getElementById('stActive').style.display='block';
+  document.getElementById('banner').style.display='flex';
+  document.getElementById('bannerLoc').textContent=(trip.endAddr||trip.addr||'Sin GPS').slice(0,40);
+  var km=trip.dist||0;
+  document.getElementById('distEl').textContent=km<1?Math.round(km*1000)+' m':km.toFixed(1).replace('.',',')+' km';
+  timerInt=setInterval(tickTimer,1000);
+  recInt=setInterval(function(){ actualizarRecEnViaje(); }, 5*60*1000);
+  setTimeout(function(){ if(trip) actualizarRecEnViaje(); }, 3000);
+  iniciarSeguimientoGPS();
+  toast('▶️ Viaje en curso recuperado','#00e676');
 }
 
 function tickTimer(){
@@ -714,21 +849,64 @@ function tickTimer(){
   document.getElementById('timerEl').textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
 }
 
+// ════════════════════════════════════════════════
+// DICTADO POR VOZ (Web Speech API)
+// ════════════════════════════════════════════════
+function dictarViaje(){
+  var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){ toast('Tu navegador no soporta dictado por voz','#ff4560'); return; }
+  var btn=document.getElementById('btnDictado');
+  var rec=new SR();
+  rec.lang='es-ES'; rec.interimResults=false; rec.maxAlternatives=1;
+  if(btn){ btn.textContent='🎙️ Escuchando... di algo como "quince euros efectivo"'; btn.disabled=true; }
+  rec.onresult=function(e){ procesarDictado(e.results[0][0].transcript.toLowerCase()); };
+  rec.onerror=function(){ toast('No se ha entendido, inténtalo de nuevo','#ff4560'); };
+  rec.onend=function(){ if(btn){ btn.textContent='🎤 Apuntar por voz'; btn.disabled=false; } };
+  try{ rec.start(); }catch(e){ toast('No se pudo iniciar el micrófono','#ff4560'); if(btn){btn.textContent='🎤 Apuntar por voz';btn.disabled=false;} }
+}
+
+function procesarDictado(texto){
+  var huboAlgo=false;
+  // Importe: primer número que aparezca (admite coma o punto decimal)
+  var m=texto.match(/(\d+([.,]\d{1,2})?)/);
+  if(m){
+    document.getElementById('inpTotal').value=m[1].replace(',','.');
+    onTotalInput();
+    huboAlgo=true;
+  }
+  // Método de pago y, si es app, la plataforma
+  if(/\befectivo\b/.test(texto)){
+    var pe=document.querySelector('.po[data-p="efectivo"]'); if(pe){pe.click(); huboAlgo=true;}
+  }else if(/\btarjeta\b/.test(texto)){
+    var pt=document.querySelector('.po[data-p="tarjeta"]'); if(pt){pt.click(); huboAlgo=true;}
+  }else if(/cabify|free\s?now|\bptv\b|tax[ií]metro|\bapp\b/.test(texto)){
+    var pa=document.querySelector('.po[data-p="app"]'); if(pa){pa.click(); huboAlgo=true;}
+    if(/cabify/.test(texto)) document.querySelector('.chip[data-pl="Cabify"]').click();
+    else if(/free\s?now/.test(texto)) document.querySelector('.chip[data-pl="FreeNow"]').click();
+    else if(/\bptv\b/.test(texto)) document.querySelector('.chip[data-pl="PTV"]').click();
+    else if(/tax[ií]metro/.test(texto)) document.querySelector('.chip[data-pl="Taxímetro"]').click();
+  }
+  toast(huboAlgo?'🎤 Entendido: "'+texto+'"':'🎤 No he pillado importe ni pago — repite','#00e096');
+}
+
 function selPago(el){
   document.querySelectorAll('.po').forEach(function(o){ o.classList.remove('sel'); });
   el.classList.add('sel'); pago=el.dataset.p;
-  document.getElementById('grpEfectivo').style.display=pago==='efectivo'?'':'none';
   document.getElementById('grpPlat').style.display=pago==='app'?'':'none';
-  calcCambio();
 }
-function selPlat(el){ document.querySelectorAll('.chip').forEach(function(c){ c.classList.remove('on'); }); el.classList.add('on'); plat=el.dataset.pl; }
+function selPlat(el){ document.querySelectorAll('.chip[data-pl]').forEach(function(c){ c.classList.remove('on'); }); el.classList.add('on'); plat=el.dataset.pl; }
 
-function calcCambio(){
-  if(pago!=='efectivo'){ document.getElementById('cambioBox').style.display='none'; return; }
-  var t=parseFloat(document.getElementById('inpTotal').value)||0;
-  var c=parseFloat(document.getElementById('inpEfectivo').value)||0;
-  if(c>t){ document.getElementById('cambioBox').style.display='flex'; document.getElementById('cambioAmt').textContent='€'+fmt(c-t); }
-  else document.getElementById('cambioBox').style.display='none';
+// Importe rápido: un toque rellena el Total
+function chipTotal(el){
+  document.querySelectorAll('#chipsTotal .chip').forEach(function(c){ c.classList.remove('on'); });
+  el.classList.add('on');
+  document.getElementById('inpTotal').value=el.dataset.amt;
+  onTotalInput();
+}
+function onTotalInput(){
+  document.querySelectorAll('#chipsTotal .chip').forEach(function(c){
+    c.classList.toggle('on', c.dataset.amt===document.getElementById('inpTotal').value);
+  });
 }
 
 async function saveTrip(){
@@ -741,7 +919,7 @@ async function saveTrip(){
     hora:now.getHours(), diaSem:now.getDay(),
     pago:pago, plataforma:pago==='app'?plat:'',
     total:total,
-    efectivo:pago==='efectivo'?(parseFloat(document.getElementById('inpEfectivo').value)||total):0,
+    efectivo:pago==='efectivo'?total:0,
     duracion:trip?Math.floor((Date.now()-trip.t0)/1000):0,
     dist:trip?parseFloat(trip.dist.toFixed(2)):0,
     startLat:trip?trip.lat:null, startLng:trip?trip.lng:null, startAddr:trip?trip.addr:'',
@@ -854,21 +1032,24 @@ function resetTrip(){
   if(recInt!==null){ clearInterval(recInt); recInt=null; }
   if(watchId!==null){ navigator.geolocation.clearWatch(watchId); watchId=null; }
   trip=null;
+  saveTripState();
   document.getElementById('stIdle').style.display='block';
   document.getElementById('stActive').style.display='none';
   document.getElementById('banner').style.display='none';
   document.getElementById('timerEl').textContent='00:00';
   document.getElementById('distEl').textContent='0 m';
   var br=document.getElementById('bannerRec'); if(br) br.style.display='none';
-  ['inpTotal','inpEfectivo','inpRuta','inpNota'].forEach(function(id){ var e=document.getElementById(id); if(e){e.value='';delete e.dataset.u;} });
-  document.getElementById('cambioBox').style.display='none';
+  ['inpTotal','inpRuta','inpNota'].forEach(function(id){ var e=document.getElementById(id); if(e){e.value='';delete e.dataset.u;} });
+  document.querySelectorAll('#chipsTotal .chip').forEach(function(c){ c.classList.remove('on'); });
+  document.getElementById('masDetalles').style.display='none';
+  document.getElementById('masDetallesToggle').style.display='block';
   document.querySelectorAll('.po').forEach(function(o){ o.classList.remove('sel'); });
   document.querySelector('.po[data-p="efectivo"]').classList.add('sel');
   pago='efectivo';
-  document.getElementById('grpEfectivo').style.display='';
   document.getElementById('grpPlat').style.display='none';
   document.getElementById('gpsDot').className='dot';
   document.getElementById('gpsText').textContent='Sin ubicación — pulsa Iniciar';
+  var jr=loadJornada(); if(jr&&jr.activa&&jr.fecha===today()) iniciarVigilanciaSinViaje();
   renderQuick();
 }
 
@@ -1414,6 +1595,7 @@ function renderAjustes(){
   if(sc){ sc.value=corte; lc.textContent=String(corte).padStart(2,'0')+':00h'; }
   if(sd2){ sd2.value=diasCfg; ld.textContent=diasCfg+' día'+(diasCfg>1?'s':''); }
   if(so){ so.value=obj; lo.textContent='€'+obj; }
+  var chkAd=document.getElementById('chkAutoDetect'); if(chkAd) chkAd.checked=autoDetectHabilitado();
 
   // Almacenamiento
   var n=DB.viajes.length;
@@ -1909,6 +2091,7 @@ function checkJornadaGate(){
     gate.style.display='none';
     banner.style.display='flex';
     document.getElementById('jbHora').textContent=fmtT(j.inicio);
+    if(!trip) iniciarVigilanciaSinViaje();
   } else {
     gateImportOk=false;
     document.getElementById('btnIniciarJornada').disabled=false;
@@ -1917,6 +2100,7 @@ function checkJornadaGate(){
     banner.style.display='none';
     gate.style.display='flex';
     cargarEventosJornada();
+    detenerVigilanciaSinViaje();
   }
 }
 
@@ -2047,6 +2231,7 @@ function finalizarJornada(){
 // ════════════════════════════════════════════════
 // INIT
 // ════════════════════════════════════════════════
+restaurarViajeSiHay();
 renderQuick();
 checkJornadaGate();
 renderBackupStatus();
