@@ -243,7 +243,7 @@ select option{background:var(--s2)}
 <div class="topbar">
   <div class="logo">
     <div class="logo-icon">🚕</div>
-    <div class="logo-name">Taxi<span>Book</span> Pro <span style="color:var(--muted);font-weight:400;font-size:.55em;font-family:var(--mono)">build 2026-09-06-f</span></div>
+    <div class="logo-name">Taxi<span>Book</span> Pro <span style="color:var(--muted);font-weight:400;font-size:.55em;font-family:var(--mono)">build 2026-09-06-g</span></div>
   </div>
   <div class="week-badge" id="weekBadge"></div>
 </div>
@@ -356,16 +356,7 @@ select option{background:var(--s2)}
         <div class="po" data-p="app" onclick="selPago(this)"><span class="pi">📱</span>App</div>
       </div></div>
 
-      <div id="grpPlat" style="display:none">
-        <div class="fg" style="margin-bottom:6px"><label>Plataforma (toca para guardar)</label></div>
-        <div class="chips">
-          <div class="chip on" data-pl="Cabify" onclick="selPlat(this)">Cabify</div>
-          <div class="chip" data-pl="FreeNow" onclick="selPlat(this)">FreeNow</div>
-          <div class="chip" data-pl="PTV" onclick="selPlat(this)">PTV</div>
-          <div class="chip" data-pl="Taxímetro" onclick="selPlat(this)">Taxímetro</div>
-          <div class="chip" data-pl="Otra" onclick="selPlat(this)">Otra</div>
-        </div>
-      </div>
+
 
       <button type="button" id="btnDictado" class="btn-sec" style="width:100%;margin:10px 0" onclick="dictarViaje()">🎤 Apuntar por voz</button>
 
@@ -772,7 +763,7 @@ async function reverseGeo(lat,lng){
 // ════════════════════════════════════════════════
 // ESTADO DEL VIAJE
 // ════════════════════════════════════════════════
-var trip=null, timerInt=null, watchId=null, recInt=null, pago='efectivo', plat='Cabify';
+var trip=null, timerInt=null, watchId=null, recInt=null, pago='efectivo';
 var TRIP_KEY='taxibook_trip_activo';
 function saveTripState(){
   if(!trip){ try{localStorage.removeItem(TRIP_KEY);}catch(e){} return; }
@@ -970,17 +961,13 @@ function procesarDictado(texto){
     onTotalInput();
     huboAlgo=true;
   }
-  // Método de pago y, si es app, la plataforma
+  // Método de pago
   if(/\befectivo\b/.test(texto)){
     var pe=document.querySelector('.po[data-p="efectivo"]'); if(pe){pe.click(); huboAlgo=true;}
   }else if(/\btarjeta\b/.test(texto)){
     var pt=document.querySelector('.po[data-p="tarjeta"]'); if(pt){pt.click(); huboAlgo=true;}
   }else if(/cabify|free\s?now|\bptv\b|tax[ií]metro|\bapp\b/.test(texto)){
     var pa=document.querySelector('.po[data-p="app"]'); if(pa){pa.click(); huboAlgo=true;}
-    if(/cabify/.test(texto)) document.querySelector('.chip[data-pl="Cabify"]').click();
-    else if(/free\s?now/.test(texto)) document.querySelector('.chip[data-pl="FreeNow"]').click();
-    else if(/\bptv\b/.test(texto)) document.querySelector('.chip[data-pl="PTV"]').click();
-    else if(/tax[ií]metro/.test(texto)) document.querySelector('.chip[data-pl="Taxímetro"]').click();
   }
   // Si se pide expresamente terminar/guardar y ya hay importe, guarda directo
   var quiereGuardar=/finalizar|termina|terminar|guarda|guardar|fin del?\s*viaje|fin viaje/.test(texto);
@@ -997,15 +984,6 @@ var guardandoViaje=false;
 function selPago(el){
   document.querySelectorAll('.po').forEach(function(o){ o.classList.remove('sel'); });
   el.classList.add('sel'); pago=el.dataset.p;
-  document.getElementById('grpPlat').style.display=pago==='app'?'':'none';
-  if(pago!=='app'){
-    var total=parseFloat(document.getElementById('inpTotal').value);
-    if(total>0) saveTrip();
-  }
-}
-function selPlat(el){
-  document.querySelectorAll('.chip[data-pl]').forEach(function(c){ c.classList.remove('on'); });
-  el.classList.add('on'); plat=el.dataset.pl;
   var total=parseFloat(document.getElementById('inpTotal').value);
   if(total>0) saveTrip();
 }
@@ -1060,7 +1038,7 @@ async function saveTrip(){
   var v={
     id:Date.now(), fecha:jornadaFecha(now), ts:now.toISOString(),
     hora:now.getHours(), diaSem:now.getDay(),
-    pago:pago, plataforma:pago==='app'?plat:'',
+    pago:pago, plataforma:'',
     total:total,
     efectivo:pago==='efectivo'?total:0,
     duracion:trip?Math.floor((Date.now()-trip.t0)/1000):0,
@@ -1191,7 +1169,6 @@ function resetTrip(){
   document.querySelectorAll('.po').forEach(function(o){ o.classList.remove('sel'); });
   document.querySelector('.po[data-p="efectivo"]').classList.add('sel');
   pago='efectivo';
-  document.getElementById('grpPlat').style.display='none';
   document.getElementById('gpsDot').className='dot';
   document.getElementById('gpsText').textContent='Sin ubicación — pulsa Iniciar';
   var jr=loadJornada(); if(jr&&jr.activa&&jr.fecha===today()) iniciarVigilanciaSinViaje();
