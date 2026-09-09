@@ -243,7 +243,7 @@ select option{background:var(--s2)}
 <div class="topbar">
   <div class="logo">
     <div class="logo-icon">🚕</div>
-    <div class="logo-name">Taxi<span>Book</span> Pro <span style="color:var(--muted);font-weight:400;font-size:.55em;font-family:var(--mono)">build 2026-09-06-l</span></div>
+    <div class="logo-name">Taxi<span>Book</span> Pro <span style="color:var(--muted);font-weight:400;font-size:.55em;font-family:var(--mono)">build 2026-09-06-m</span></div>
   </div>
   <div class="week-badge" id="weekBadge"></div>
 </div>
@@ -425,7 +425,10 @@ select option{background:var(--s2)}
 <div class="sec" id="sec-recdia">
   <div class="card">
     <div class="ct">🌗 Recomendación del día</div>
-    <div id="recDiaContent"></div>
+    <div id="recDiaMeta" style="font-size:.62rem;color:var(--muted);font-family:var(--mono);margin-bottom:8px"></div>
+    <div class="chips" id="recDiaChips" style="margin-bottom:10px"></div>
+    <div id="recDiaMapEl" style="height:260px;border-radius:10px;border:1px solid var(--border);overflow:hidden;margin-bottom:10px;display:none"></div>
+    <div id="recDiaResumen"></div>
   </div>
 </div>
 
@@ -1678,73 +1681,105 @@ var HORAS=['00','01','02','03','04','05','06','07','08','09','10','11','12','13'
 // ════════════════════════════════════════════════
 // RECOMENDACIÓN DEL DÍA (por franjas horarias)
 // ════════════════════════════════════════════════
+var recDiaMap=null, recDiaLayers=[], recDiaBloqueSel=null, recDiaUsados=[], recDiaFuente='';
+var BLOQUES_DIA=[
+  {id:'madrugada',nombre:'Madrugada',ini:0,fin:6,icon:'🌙'},
+  {id:'manana',nombre:'Mañana',ini:6,fin:12,icon:'🌅'},
+  {id:'mediodia',nombre:'Mediodía',ini:12,fin:15,icon:'☀️'},
+  {id:'tarde',nombre:'Tarde',ini:15,fin:21,icon:'🌇'},
+  {id:'noche',nombre:'Noche',ini:21,fin:24,icon:'🌃'}
+];
+
 function renderRecDia(){
-  var cont=document.getElementById('recDiaContent');
-  if(!cont) return;
   var ahora=new Date(), diaHoy=ahora.getDay(), horaAhora=ahora.getHours();
   var dias=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
-  var bloques=[
-    {nombre:'Madrugada',ini:0,fin:6,icon:'🌙'},
-    {nombre:'Mañana',ini:6,fin:12,icon:'🌅'},
-    {nombre:'Mediodía',ini:12,fin:15,icon:'☀️'},
-    {nombre:'Tarde',ini:15,fin:21,icon:'🌇'},
-    {nombre:'Noche',ini:21,fin:24,icon:'🌃'}
-  ];
 
   var deHoy=DB.viajes.filter(function(v){ return diaSemViaje(v)===diaHoy; });
-  var usados=deHoy, fuenteTxt=dias[diaHoy];
-  if(deHoy.length<15){ usados=DB.viajes.slice(); fuenteTxt='todo el histórico (pocos datos de '+dias[diaHoy]+' todavía)'; }
+  if(deHoy.length>=15){ recDiaUsados=deHoy; recDiaFuente=dias[diaHoy]; }
+  else{ recDiaUsados=DB.viajes.slice(); recDiaFuente='todo el histórico (pocos datos de '+dias[diaHoy]+' todavía)'; }
 
-  var html='<div style="font-size:.62rem;color:var(--muted);font-family:var(--mono);margin-bottom:10px">Basado en '+fuenteTxt+' · '+usados.length+' viajes analizados</div>';
+  document.getElementById('recDiaMeta').textContent='Basado en '+recDiaFuente+' · '+recDiaUsados.length+' viajes analizados';
 
-  bloques.forEach(function(b){
-    var vs=usados.filter(function(v){ return v.hora>=b.ini && v.hora<b.fin; });
+  var actual=BLOQUES_DIA.filter(function(b){ return horaAhora>=b.ini && horaAhora<b.fin; })[0] || BLOQUES_DIA[0];
+  if(!recDiaBloqueSel) recDiaBloqueSel=actual.id;
+
+  document.getElementById('recDiaChips').innerHTML=BLOQUES_DIA.map(function(b){
     var esAhora=horaAhora>=b.ini && horaAhora<b.fin;
-    var n=vs.length;
-    var total=vs.reduce(function(s,v){ return s+v.total; },0);
-    var prom=n?total/n:0;
+    return '<div class="chip'+(b.id===recDiaBloqueSel?' on':'')+'" data-bloque="'+b.id+'" onclick="selBloqueDia(this)">'+b.icon+' '+b.nombre+(esAhora?' 🔵':'')+'</div>';
+  }).join('');
 
-    // Agrupamos por cercanía geográfica real (celdas de ~1,3 km), no por el
-    // texto exacto de la dirección — así una calle con un solo viaje suelto
-    // no puede "ganar" como zona top; hace falta que varios viajes cercanos
-    // lo respalden. Dentro de cada cuadrante, el nombre que se muestra es
-    // el más repetido entre los viajes de esa zona.
-    var CELL=0.012; // ~1.3 km
-    var clusters={};
-    vs.forEach(function(v){
-      if(!v.startLat||!v.startLng) return;
-      var gk=Math.round(v.startLat/CELL)+','+Math.round(v.startLng/CELL);
-      if(!clusters[gk]) clusters[gk]={n:0,t:0,nombres:{}};
-      clusters[gk].n++; clusters[gk].t+=v.total;
-      var nom=(v.startAddr||'').split(',')[0].trim();
-      if(nom) clusters[gk].nombres[nom]=(clusters[gk].nombres[nom]||0)+1;
-    });
-    var cuadrantes=Object.values(clusters).map(function(c){
-      var mejorNombre=null,mejorCount=0;
-      Object.entries(c.nombres).forEach(function(e){ if(e[1]>mejorCount){ mejorCount=e[1]; mejorNombre=e[0]; } });
-      return {k:mejorNombre||'Zona sin nombre', n:c.n, prom:c.t/c.n};
-    });
-    var conRespaldo=cuadrantes.filter(function(c){ return c.n>=3; });
-    var candidatas=conRespaldo.length?conRespaldo:cuadrantes;
-    var topZona=candidatas.sort(function(a,c){ return c.prom-a.prom; })[0];
+  pintarBloqueDia();
+}
 
-    html+='<div class="card" style="margin-bottom:10px'+(esAhora?';border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)':'')+'">'+
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
-        '<div style="font-weight:700;font-size:.85rem">'+b.icon+' '+b.nombre+' <span style="color:var(--muted);font-weight:400;font-size:.65rem">('+String(b.ini).padStart(2,'0')+'-'+String(b.fin===24?0:b.fin).padStart(2,'0')+'h)</span></div>'+
-        (esAhora?'<span style="background:var(--acc);color:#000;font-size:.6rem;font-weight:800;padding:2px 8px;border-radius:10px">AHORA</span>':'')+
-      '</div>'+
-      (n?
-        '<div style="font-size:.75rem;color:var(--text);line-height:1.6">'+
-          n+' viajes · €'+total.toFixed(2)+' total · <b>€'+prom.toFixed(2)+'/viaje</b> de media'+
-          (topZona?'<br>📍 Zona top: <b>'+topZona.k+'</b> (€'+topZona.prom.toFixed(2)+'/v · '+topZona.n+' viajes en la zona)':'')+
-        '</div>'
-      :
-        '<div style="font-size:.72rem;color:var(--muted)">Sin viajes registrados en esta franja</div>'
-      )+
-    '</div>';
+function selBloqueDia(el){
+  document.querySelectorAll('#recDiaChips .chip').forEach(function(c){ c.classList.remove('on'); });
+  el.classList.add('on');
+  recDiaBloqueSel=el.dataset.bloque;
+  pintarBloqueDia();
+}
+
+function pintarBloqueDia(){
+  var b=BLOQUES_DIA.filter(function(x){ return x.id===recDiaBloqueSel; })[0];
+  if(!b) return;
+  var vs=recDiaUsados.filter(function(v){ return v.hora>=b.ini && v.hora<b.fin; });
+  var n=vs.length, total=vs.reduce(function(s,v){ return s+v.total; },0), prom=n?total/n:0;
+
+  // Agrupamos por cercanía geográfica real (celdas de ~1,3 km), no por el
+  // texto exacto de la dirección — así una calle con un solo viaje suelto
+  // no puede "ganar" como zona top; hace falta que varios viajes cercanos
+  // lo respalden. El nombre mostrado es el más repetido en esa zona.
+  var CELL=0.012;
+  var clusters={};
+  vs.forEach(function(v){
+    if(!v.startLat||!v.startLng) return;
+    var glat=Math.round(v.startLat/CELL)*CELL, glng=Math.round(v.startLng/CELL)*CELL;
+    var gk=glat+','+glng;
+    if(!clusters[gk]) clusters[gk]={n:0,t:0,lat:glat,lng:glng,nombres:{}};
+    clusters[gk].n++; clusters[gk].t+=v.total;
+    var nom=(v.startAddr||'').split(',')[0].trim();
+    if(nom) clusters[gk].nombres[nom]=(clusters[gk].nombres[nom]||0)+1;
   });
+  var cuadrantes=Object.values(clusters).map(function(c){
+    var mejorNombre=null,mejorCount=0;
+    Object.entries(c.nombres).forEach(function(e){ if(e[1]>mejorCount){ mejorCount=e[1]; mejorNombre=e[0]; } });
+    return {k:mejorNombre||'Zona sin nombre', n:c.n, prom:c.t/c.n, lat:c.lat, lng:c.lng};
+  });
+  var conRespaldo=cuadrantes.filter(function(c){ return c.n>=3; });
+  var candidatas=(conRespaldo.length?conRespaldo:cuadrantes).sort(function(a,c){ return c.prom-a.prom; }).slice(0,3);
 
-  cont.innerHTML=html;
+  var resumen='<div style="font-size:.8rem;line-height:1.6;margin-bottom:6px">'+
+    (n?('<b>'+n+'</b> viajes · €'+total.toFixed(2)+' total · <b>€'+prom.toFixed(2)+'/viaje</b> de media'):'Sin viajes registrados en esta franja')+
+    '</div>';
+  var ics=['🥇','🥈','🥉'];
+  if(candidatas.length){
+    resumen+='<div style="font-size:.74rem;line-height:1.9">'+candidatas.map(function(c,i){
+      return (ics[i]||'📍')+' <b>'+c.k+'</b> — €'+c.prom.toFixed(2)+'/v · '+c.n+' viajes';
+    }).join('<br>')+'</div>';
+  }
+  document.getElementById('recDiaResumen').innerHTML=resumen;
+
+  var el=document.getElementById('recDiaMapEl');
+  if(!candidatas.length){ el.style.display='none'; return; }
+  el.style.display='block';
+  if(!recDiaMap){
+    recDiaMap=L.map('recDiaMapEl',{zoomControl:false,attributionControl:false});
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(recDiaMap);
+  }
+  recDiaLayers.forEach(function(l){ recDiaMap.removeLayer(l); }); recDiaLayers=[];
+  var colores=['#a855f7','#38bdf8','#f59e0b'];
+  var bounds=[];
+  candidatas.forEach(function(c,i){
+    var col=colores[i]||'#6b7280';
+    var circle=L.circle([c.lat,c.lng],{radius:800,color:col,fillColor:col,fillOpacity:0.15,weight:2});
+    circle.addTo(recDiaMap); recDiaLayers.push(circle);
+    var icon=L.divIcon({html:'<div style="background:var(--s2,#111827);border:2px solid '+col+';border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px">'+(ics[i]||'📍')+'</div>',iconSize:[28,28],iconAnchor:[14,14],className:''});
+    var m=L.marker([c.lat,c.lng],{icon:icon}).bindPopup('<b>'+c.k+'</b><br>€'+c.prom.toFixed(2)+'/viaje · '+c.n+' viajes');
+    m.addTo(recDiaMap); recDiaLayers.push(m);
+    bounds.push([c.lat,c.lng]);
+  });
+  if(bounds.length===1) recDiaMap.setView(bounds[0],14);
+  else recDiaMap.fitBounds(bounds,{padding:[30,30],maxZoom:14});
+  setTimeout(function(){ if(recDiaMap) recDiaMap.invalidateSize(); },150);
 }
 
 function renderMapa(){
