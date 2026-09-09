@@ -243,7 +243,7 @@ select option{background:var(--s2)}
 <div class="topbar">
   <div class="logo">
     <div class="logo-icon">🚕</div>
-    <div class="logo-name">Taxi<span>Book</span> Pro <span style="color:var(--muted);font-weight:400;font-size:.55em;font-family:var(--mono)">build 2026-09-06-k</span></div>
+    <div class="logo-name">Taxi<span>Book</span> Pro <span style="color:var(--muted);font-weight:400;font-size:.55em;font-family:var(--mono)">build 2026-09-06-l</span></div>
   </div>
   <div class="week-badge" id="weekBadge"></div>
 </div>
@@ -1704,14 +1704,29 @@ function renderRecDia(){
     var total=vs.reduce(function(s,v){ return s+v.total; },0);
     var prom=n?total/n:0;
 
-    var zonas={};
+    // Agrupamos por cercanía geográfica real (celdas de ~1,3 km), no por el
+    // texto exacto de la dirección — así una calle con un solo viaje suelto
+    // no puede "ganar" como zona top; hace falta que varios viajes cercanos
+    // lo respalden. Dentro de cada cuadrante, el nombre que se muestra es
+    // el más repetido entre los viajes de esa zona.
+    var CELL=0.012; // ~1.3 km
+    var clusters={};
     vs.forEach(function(v){
-      var addr=v.startAddr||''; if(!addr) return;
-      var k=addr.split(',')[0].trim(); if(!k) return;
-      if(!zonas[k]) zonas[k]={n:0,t:0};
-      zonas[k].n++; zonas[k].t+=v.total;
+      if(!v.startLat||!v.startLng) return;
+      var gk=Math.round(v.startLat/CELL)+','+Math.round(v.startLng/CELL);
+      if(!clusters[gk]) clusters[gk]={n:0,t:0,nombres:{}};
+      clusters[gk].n++; clusters[gk].t+=v.total;
+      var nom=(v.startAddr||'').split(',')[0].trim();
+      if(nom) clusters[gk].nombres[nom]=(clusters[gk].nombres[nom]||0)+1;
     });
-    var topZona=Object.entries(zonas).map(function(e){ return {k:e[0],n:e[1].n,prom:e[1].t/e[1].n}; }).sort(function(a,c){ return c.prom-a.prom; })[0];
+    var cuadrantes=Object.values(clusters).map(function(c){
+      var mejorNombre=null,mejorCount=0;
+      Object.entries(c.nombres).forEach(function(e){ if(e[1]>mejorCount){ mejorCount=e[1]; mejorNombre=e[0]; } });
+      return {k:mejorNombre||'Zona sin nombre', n:c.n, prom:c.t/c.n};
+    });
+    var conRespaldo=cuadrantes.filter(function(c){ return c.n>=3; });
+    var candidatas=conRespaldo.length?conRespaldo:cuadrantes;
+    var topZona=candidatas.sort(function(a,c){ return c.prom-a.prom; })[0];
 
     html+='<div class="card" style="margin-bottom:10px'+(esAhora?';border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)':'')+'">'+
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
@@ -1721,7 +1736,7 @@ function renderRecDia(){
       (n?
         '<div style="font-size:.75rem;color:var(--text);line-height:1.6">'+
           n+' viajes · €'+total.toFixed(2)+' total · <b>€'+prom.toFixed(2)+'/viaje</b> de media'+
-          (topZona?'<br>📍 Zona top: <b>'+topZona.k+'</b> (€'+topZona.prom.toFixed(2)+'/v)':'')+
+          (topZona?'<br>📍 Zona top: <b>'+topZona.k+'</b> (€'+topZona.prom.toFixed(2)+'/v · '+topZona.n+' viajes en la zona)':'')+
         '</div>'
       :
         '<div style="font-size:.72rem;color:var(--muted)">Sin viajes registrados en esta franja</div>'
