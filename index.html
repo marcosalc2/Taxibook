@@ -49,7 +49,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);display:flex
 .stat::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:var(--ac,var(--acc))}
 .sl{font-size:.58rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
 .sv{font-family:var(--mono);font-size:1.35rem;font-weight:500;line-height:1}
-.sv.g{color:var(--green)}.sv.y{color:var(--yellow)}.sv.b{color:var(--acc)}.sv.p{color:var(--purple)}
+.sv.g{color:var(--green)}.sv.y{color:var(--yellow)}.sv.b{color:var(--acc)}.sv.p{color:var(--purple)}.sv.c{color:#00e5ff}
 .ss{font-size:.6rem;color:var(--muted);margin-top:3px;font-family:var(--mono)}
 /* BOTONES */
 .btn-start{width:100%;padding:17px;border:none;border-radius:var(--r);background:linear-gradient(135deg,var(--acc),var(--acc2));color:#000;font-family:var(--font);font-size:1rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
@@ -243,7 +243,7 @@ select option{background:var(--s2)}
 <div class="topbar">
   <div class="logo">
     <div class="logo-icon">🚕</div>
-    <div class="logo-name">Taxi<span>Book</span> Pro <span style="color:var(--muted);font-weight:400;font-size:.55em;font-family:var(--mono)">build 2026-09-06-m</span></div>
+    <div class="logo-name">Taxi<span>Book</span> Pro <span style="color:var(--muted);font-weight:400;font-size:.55em;font-family:var(--mono)">build 2026-09-09-a</span></div>
   </div>
   <div class="week-badge" id="weekBadge"></div>
 </div>
@@ -1490,6 +1490,23 @@ async function showRec(viajeRecien){
 function getObjetivo(){ return parseFloat(localStorage.getItem('taxibook_objetivo')||'1250'); }
 function getDiasSemana(){ return parseInt(localStorage.getItem('taxibook_dias')||'5'); }
 
+// Euros/hora en tiempo real desde el inicio de la jornada actual
+function actualizarEurosHora(){
+  var ev=document.getElementById('eurosHoraVal'), es=document.getElementById('eurosHoraSub');
+  if(!ev) return;
+  var j=loadJornada();
+  if(!j || !j.activa || j.fecha!==today()){ ev.textContent='--'; es.textContent='sin jornada activa'; return; }
+  var horas=(Date.now()-new Date(j.inicio))/3600000;
+  if(horas<=0.0166){ ev.textContent='--'; es.textContent='empezando...'; return; } // <1 min
+  var t=today();
+  var th=DB.viajes.filter(function(v){ return v.fecha===t; }).reduce(function(s,v){ return s+v.total; },0);
+  var eh=th/horas;
+  ev.textContent='€'+fmt(eh);
+  var hh=Math.floor(horas), mm=Math.round((horas-hh)*60);
+  es.textContent=hh+'h'+String(mm).padStart(2,'0')+'m de jornada';
+}
+var eurosHoraInt=setInterval(actualizarEurosHora, 30000);
+
 function renderQuick(){
   var t=today();
   var hoy=DB.viajes.filter(function(v){ return v.fecha===t; });
@@ -1512,7 +1529,9 @@ function renderQuick(){
     stat('HOY','€'+fmt(th),hoy.length+' viajes','var(--green)','g')+
     stat('SEMANA','€'+fmt(ts),sem.length+' viajes','var(--acc)','b')+
     stat('EFECTIVO','€'+fmt(eh),'en caja','var(--yellow)','y')+
-    stat('PROM/DÍA','€'+fmt(promDia),diasTrabajados+' días trabajados','var(--purple)','p');
+    stat('PROM/DÍA','€'+fmt(promDia),diasTrabajados+' días trabajados','var(--purple)','p')+
+    '<div style="grid-column:1/-1">'+stat('€/HORA (jornada)','<span id="eurosHoraVal">--</span>','<span id="eurosHoraSub">--</span>','#00e5ff','c')+'</div>';
+  actualizarEurosHora();
 
   // ── Barra objetivo semanal ──
   var obj=getObjetivo();
