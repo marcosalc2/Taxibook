@@ -71,18 +71,21 @@ nav button{padding:7px 0 6px}nav button i{font-size:1.05rem}
 .pad{gap:6px;margin-bottom:8px}.pad button{font-size:1.1rem;padding:8px 0;border-radius:10px}
 .seg{gap:6px;margin-bottom:8px}.seg button{flex-direction:row;justify-content:center;gap:6px;padding:8px 0;font-size:.75rem}.seg button i{font-size:1rem}
 .btn{padding:12px}
-/* tamaño intermedio */
-header{padding:7px 15px 3px}.logo{font-size:1rem}main{padding:3px 11px 10px}
-nav button{padding:6px 0 5px;font-size:.65rem}nav button i{font-size:1rem}
-.card{padding:9px;margin-bottom:7px}
-.jl{font-size:.9rem}.js{font-size:.7rem}
-.stats{gap:5px;margin-top:7px}.st{padding:5px 8px}.st .v{font-size:.86rem}.st .k{font-size:.52rem}
-.wk{margin-top:7px;font-size:.67rem}.wk b{font-size:.75rem}
-.disp{font-size:1.8rem;padding:0 4px 3px}.disp span{font-size:1rem}
-.quick{gap:7px;margin-bottom:7px}.quick button{font-size:1.2rem;padding:9px 0;border-width:1px}
-.pad{gap:5px;margin-bottom:7px}.pad button{font-size:1rem;padding:7px 0}
-.seg{gap:5px;margin-bottom:7px}.seg button{padding:7px 0;font-size:.72rem;border-width:1px}.seg button i{font-size:.95rem}
-.btn{padding:11px;font-size:.9rem}.btn.ghost{padding:7px 12px;font-size:.78rem}
+/* rellena toda la pantalla */
+header{padding:8px 16px 4px}.logo{font-size:1.05rem}main{padding:4px 12px 10px}
+nav button{padding:8px 0 7px;font-size:.68rem}nav button i{font-size:1.1rem}
+#s-viaje.on{display:flex;flex-direction:column;min-height:100%}
+#s-viaje .card{padding:10px;margin-bottom:8px}
+#amtcard{flex:1;display:flex;flex-direction:column;min-height:330px;margin-bottom:0}
+.jl{font-size:.95rem}.js{font-size:.74rem}
+.stats{gap:6px;margin-top:8px}.st{padding:7px 9px}.st .v{font-size:1rem}.st .k{font-size:.56rem}
+.wk{margin-top:8px;font-size:.72rem}.wk b{font-size:.82rem}
+.disp{font-size:2.5rem;padding:0 6px 6px}.disp span{font-size:1.2rem}
+.quick{gap:8px;margin-bottom:8px}.quick button{font-size:1.6rem;padding:14px 0;border-width:2px}
+.pad{flex:1;min-height:0;gap:7px;margin-bottom:8px;grid-template-rows:repeat(4,1fr)}
+.pad button{font-size:clamp(1.3rem,3.4vh,1.9rem);padding:0}
+.seg{gap:7px;margin-bottom:8px}.seg button{padding:12px 0;font-size:.82rem;border-width:2px}.seg button i{font-size:1.1rem}
+.btn{padding:15px;font-size:1rem}.btn.ghost{padding:9px 16px;font-size:.85rem}
 </style>
 </head>
 <body>
@@ -91,7 +94,7 @@ nav button{padding:6px 0 5px;font-size:.65rem}nav button i{font-size:1rem}
   <section class="sec on" id="s-viaje">
     <div id="bk"></div>
     <div class="card" id="jcard"></div>
-    <div class="card">
+    <div class="card" id="amtcard">
             <div class="disp" id="disp"></div>
       <div class="quick"><button id="q22" onclick="setAmt('22')">22 €</button><button id="q33" onclick="setAmt('33')">33 €</button></div>
       <div class="pad" id="pad"></div>
