@@ -60,6 +60,29 @@ select{background:var(--s2);border:1px solid var(--bd);border-radius:10px;color:
 #toast{position:fixed;left:14px;right:14px;bottom:calc(76px + env(safe-area-inset-bottom));background:#263248;border-radius:12px;padding:12px 14px;font-size:.85rem;font-weight:600;display:none;justify-content:space-between;align-items:center;z-index:60}
 #toast button{background:none;border:0;color:var(--ac);font:700 .85rem var(--f)}
 .empty{text-align:center;color:var(--mu);padding:40px 0;font-size:.85rem}
+/* compacto: todo cabe sin desplazar */
+header{padding:8px 16px 4px}main{padding:4px 12px 12px}
+nav button{padding:7px 0 6px}nav button i{font-size:1.05rem}
+.card{padding:10px;margin-bottom:8px;border-radius:14px}
+.stats{gap:6px;margin-top:8px}.st{padding:6px 8px}.st .v{font-size:.9rem}.st .k{font-size:.55rem}
+.wk{display:flex;justify-content:space-between;align-items:baseline;margin-top:8px;font-size:.7rem;color:var(--mu);text-transform:capitalize}.wk b{font:700 .78rem var(--m);color:var(--ac);text-transform:none}
+.disp{font-size:2rem;padding:0 4px 4px}
+.quick{gap:8px;margin-bottom:8px}.quick button{font-size:1.3rem;padding:10px 0;border-radius:12px}
+.pad{gap:6px;margin-bottom:8px}.pad button{font-size:1.1rem;padding:8px 0;border-radius:10px}
+.seg{gap:6px;margin-bottom:8px}.seg button{flex-direction:row;justify-content:center;gap:6px;padding:8px 0;font-size:.75rem}.seg button i{font-size:1rem}
+.btn{padding:12px}
+/* aún más compacto */
+header{padding:6px 14px 2px}.logo{font-size:.95rem}main{padding:2px 10px 8px}
+nav button{padding:5px 0 4px;font-size:.62rem}nav button i{font-size:.95rem}
+.card{padding:8px;margin-bottom:6px}
+.jl{font-size:.85rem}.js{font-size:.68rem}
+.stats{gap:5px;margin-top:6px}.st{padding:4px 7px}.st .v{font-size:.82rem}.st .k{font-size:.5rem}
+.wk{margin-top:6px;font-size:.64rem}.wk b{font-size:.72rem}
+.disp{font-size:1.6rem;padding:0 4px 2px}.disp span{font-size:.9rem}
+.quick{gap:6px;margin-bottom:6px}.quick button{font-size:1.1rem;padding:7px 0;border-width:1px}
+.pad{gap:5px;margin-bottom:6px}.pad button{font-size:.95rem;padding:6px 0}
+.seg{gap:5px;margin-bottom:6px}.seg button{padding:6px 0;font-size:.7rem;border-width:1px}.seg button i{font-size:.9rem}
+.btn{padding:10px;font-size:.88rem}.btn.ghost{padding:6px 12px;font-size:.75rem}
 </style>
 </head>
 <body>
@@ -69,8 +92,7 @@ select{background:var(--s2);border:1px solid var(--bd);border-radius:10px;color:
     <div id="bk"></div>
     <div class="card" id="jcard"></div>
     <div class="card">
-      <div class="lbl">Importe del viaje</div>
-      <div class="disp" id="disp"></div>
+            <div class="disp" id="disp"></div>
       <div class="quick"><button id="q22" onclick="setAmt('22')">22 €</button><button id="q33" onclick="setAmt('33')">33 €</button></div>
       <div class="pad" id="pad"></div>
       <div class="seg" id="seg">
@@ -159,7 +181,7 @@ function renderViaje(){
    ?'<div class="row"><div><div class="jl">Jornada · <span style="text-transform:capitalize">'+fmtD(j.fecha)+'</span></div><div class="js" style="margin-bottom:0">desde '+fmtT(j.inicio)+' · '+dur(Date.now()-new Date(j.inicio))+'</div></div><button class="btn ghost" onclick="finJ()">Fin</button></div>'
    :'<div class="jl">Sin jornada iniciada</div><div class="js">Si empiezas ahora contará como <b>'+fmtD(fechaTurno(new Date()))+'</b></div><button class="btn" onclick="iniciar()">▶ Iniciar jornada</button>';
   $('jcard').innerHTML=top+'<div class="stats"><div class="st"><div class="v">'+fmt(s.t)+'€</div><div class="k">Total</div></div><div class="st"><div class="v">'+s.n+'</div><div class="k">Viajes</div></div><div class="st"><div class="v">'+(j&&h>0.1?fmt(s.t/h)+'€':'—')+'</div><div class="k">€/hora</div></div></div>'
-   +'<div class="lbl" style="margin:14px 0 0">Semana · '+corto(w.a)+' – '+corto(w.b)+'</div><div class="stats" style="margin-top:6px"><div class="st"><div class="v" style="color:var(--ac)">'+fmt(w.t)+'€</div><div class="k">Acumulado</div></div><div class="st"><div class="v">'+w.n+'</div><div class="k">Viajes</div></div><div class="st"><div class="v">'+(w.d?fmt(w.t/w.d)+'€':'—')+'</div><div class="k">Media/día</div></div></div>';
+   +'<div class="wk"><span>Semana '+corto(w.a)+' – '+corto(w.b)+'</span><span><b>'+fmt(w.t)+'€</b> · '+w.n+' viajes · '+(w.d?fmt(w.t/w.d)+'€/día':'—')+'</span></div>';
   $('disp').innerHTML=(amt===''?'0':amt.replace('.',','))+'<span> €</span>';
   $('q22').classList.toggle('on',amt==='22');$('q33').classList.toggle('on',amt==='33');
   document.querySelectorAll('#seg button').forEach(function(b){b.classList.toggle('on',b.dataset.p===pago)});
